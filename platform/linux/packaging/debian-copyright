@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: PaneLive Companion
-Source: https://github.com/Clownfish-Web/obs-monitor-companion
+Source: https://github.com/Clownfish-Web/panelive-companion
 
 Files: *
 Copyright: 2026 Clownfish Web, Artur Cichosz, and contributors

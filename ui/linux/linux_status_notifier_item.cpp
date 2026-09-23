@@ -332,7 +332,7 @@ GVariant* LinuxStatusNotifierItem::property_read(GDBusConnection*,
                            icon_name,
                            empty_pixmaps(),
                            "PaneLive Companion",
-                           "OBS monitoring and control companion");
+                           "Production monitoring and control companion");
     if (name == "ItemIsMenu")
       return g_variant_new_boolean(FALSE);
     if (name == "Menu")

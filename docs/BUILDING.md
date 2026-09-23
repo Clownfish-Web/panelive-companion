@@ -19,7 +19,7 @@ Private test harnesses and release automation are intentionally absent from this
 Clone the repository:
 
 ```sh
-git clone https://github.com/Clownfish-Web/obs-monitor-companion.git panelive-companion
+git clone https://github.com/Clownfish-Web/panelive-companion.git panelive-companion
 cd panelive-companion
 ```
 

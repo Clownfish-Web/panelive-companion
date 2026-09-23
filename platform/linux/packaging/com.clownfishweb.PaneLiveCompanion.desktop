@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=PaneLive Companion
-Comment=Secure mobile control and monitoring companion for OBS Studio
+Comment=Secure mobile production control and monitoring
 Exec=panelive-companion --open-management
 Icon=com.clownfishweb.PaneLiveCompanion
 Terminal=false

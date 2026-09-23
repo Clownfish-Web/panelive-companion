@@ -1,7 +1,7 @@
 # Downloads and SHA-256 verification
 
 Download prebuilt installation packages from
-[GitHub Releases](https://github.com/Clownfish-Web/obs-monitor-companion/releases).
+[GitHub Releases](https://github.com/Clownfish-Web/panelive-companion/releases).
 Choose the OS and architecture listed on the release. Release notes describe the actual
 artifacts, supported backend versions and signing status. If no matching asset is listed,
 use the [source build manual](BUILDING.md); availability is not implied by a build preset.
@@ -72,5 +72,5 @@ starts in draft mode so the packages and checksums can be attached before public
 
 The display name is **PaneLive Companion**. Package managers and executable paths use
 the machine identifier `panelive-companion`; the OBS helper uses
-`panelive-companion-obs-plugin` and displays **PaneLive Companion**. Existing GitHub repository URLs are retained so download and clone
-links remain valid.
+`panelive-companion-obs-plugin` and displays **PaneLive Companion**. The public GitHub
+repository is `Clownfish-Web/panelive-companion`.

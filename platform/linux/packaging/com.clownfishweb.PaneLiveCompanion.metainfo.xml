@@ -2,18 +2,23 @@
 <component type="desktop-application">
   <id>com.clownfishweb.PaneLiveCompanion</id>
   <name>PaneLive Companion</name>
-  <summary>Secure mobile control and monitoring for OBS Studio</summary>
+  <summary>Secure mobile production control and monitoring</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
   <developer id="com.clownfishweb">
     <name>ClownfishWeb</name>
   </developer>
-  <url type="homepage">https://github.com/Clownfish-Web/obs-monitor-companion</url>
+  <url type="homepage">https://github.com/Clownfish-Web/panelive-companion</url>
   <content_rating type="oars-1.1"/>
   <description>
     <p>
-      PaneLive Companion exposes authenticated OBS controls and on-demand Program and Studio
-      Preview monitoring to paired mobile clients over HTTPS, WebSocket, and WebRTC.
+      PaneLive Companion provides secure device pairing, production control and monitoring,
+      and a standalone teleprompter for mobile clients. It supports OBS Studio, vMix on
+      Windows, and Streamlabs Desktop on Windows and macOS, with features varying by backend.
+    </p>
+    <p>
+      The Linux version supports OBS Studio and the standalone teleprompter. A separately
+      installed OBS helper provides Program and Studio Preview monitoring over WebRTC.
     </p>
   </description>
   <launchable type="desktop-id">com.clownfishweb.PaneLiveCompanion.desktop</launchable>

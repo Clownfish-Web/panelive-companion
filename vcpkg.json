@@ -43,5 +43,5 @@
     "openssl",
     "sqlite3"
   ],
-  "description": "PaneLive Companion - local production control and monitoring for paired mobile clients"
+  "description": "PaneLive Companion - secure mobile control and monitoring for OBS Studio, vMix, and Streamlabs Desktop, with platform-specific backend support"
 }

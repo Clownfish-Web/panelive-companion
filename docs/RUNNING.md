@@ -1,9 +1,12 @@
 # Install and run
 
 Use the package for your OS and CPU architecture, and verify its hash before installing.
-For source builds, first follow [BUILDING.md](BUILDING.md). Run the Companion in the
-same desktop user session as OBS; the helper uses local, owner-restricted IPC. Remote
-OBS WebSocket control does not make the helper's local video/audio IPC remote.
+For source builds, first follow [BUILDING.md](BUILDING.md). Choose OBS Studio, vMix
+(Windows), or Streamlabs Desktop (Windows/macOS) in the Companion's adapter settings,
+or use the standalone teleprompter without a production app. Features vary by backend.
+For OBS monitoring, run Companion in the same desktop user session as OBS; the helper
+uses local, owner-restricted IPC. Remote OBS WebSocket control does not make the
+helper's local video/audio IPC remote.
 
 ## Windows
 
