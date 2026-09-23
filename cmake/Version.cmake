@@ -1,5 +1,7 @@
 # The manifest pins the application version for both native build boundaries.
-file(READ "${CMAKE_CURRENT_LIST_DIR}/../vcpkg.json" studio_remote_manifest)
+get_filename_component(studio_remote_manifest_path
+  "${CMAKE_CURRENT_LIST_DIR}/../vcpkg.json" ABSOLUTE)
+file(READ "${studio_remote_manifest_path}" studio_remote_manifest)
 string(JSON STUDIO_REMOTE_BUILD_VERSION GET "${studio_remote_manifest}" version-semver)
 if(NOT STUDIO_REMOTE_BUILD_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)(-([0-9A-Za-z.-]+))?$")
   message(FATAL_ERROR "vcpkg.json must declare a numeric version with an optional prerelease suffix")
@@ -15,7 +17,7 @@ if(STUDIO_REMOTE_VERSION_PRERELEASE)
 endif()
 if(NOT CMAKE_SCRIPT_MODE_FILE)
   set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_LIST_DIR}/../vcpkg.json")
+    "${studio_remote_manifest_path}")
 endif()
 
 # Wire protocol versions are independent of the application release version.
