@@ -116,6 +116,8 @@ The Companion is licensed under **Apache-2.0**; the OBS helper under
 - [Project attribution](NOTICE)
 - [Third-party notices and dependency provenance](THIRD_PARTY_NOTICES.md)
 
-Thanks to the OBS Project and the maintainers of the libraries listed in the notices.
-PaneLive Companion is an independent project, not an official or endorsed OBS product.
+Thanks to the OBS Project, the teams behind vMix and Streamlabs Desktop, and the
+maintainers of the libraries listed in the notices. PaneLive Companion is an independent
+project, not affiliated with or endorsed by the OBS Project or the makers of vMix or
+Streamlabs Desktop.
 Product names and trademarks belong to their respective owners.

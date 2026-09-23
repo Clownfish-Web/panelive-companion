@@ -51,7 +51,7 @@ Companion requests audio only and does not ship or initialize the optional VMX v
 
 The package implements VP8 through libvpx and monitor audio through Opus. It does not enable H.264. Software copyright licenses do not grant every right that might be relevant to codecs in every jurisdiction; distributors remain responsible for their own patent review.
 
-PaneLive Companion is independent software and is not endorsed by or affiliated with the OBS Project. Names and trademarks belong to their respective owners.
+PaneLive Companion is independent software and is not endorsed by or affiliated with the OBS Project or the makers of vMix or Streamlabs Desktop. Names and trademarks belong to their respective owners.
 
 ## License texts in this source snapshot
 
