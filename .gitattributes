@@ -1,0 +1,9 @@
+* text=auto
+*.sh text eol=lf
+*.command text eol=lf
+**/preinstall text eol=lf
+**/postinstall text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.png binary
+*.ico binary

@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 1,
+  "providerId": "obs",
+  "displayName": "OBS Studio",
+  "implementationStatus": "implemented",
+  "installable": true,
+  "runtimeRegistered": true,
+  "nativeHelper": "required"
+}

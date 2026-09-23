@@ -1,0 +1,49 @@
+PaneLive Companion - macOS native installer
+
+Requires macOS 13 or newer and OBS Studio 32.2.x with Qt 6.11.1 installed on this Mac,
+and a logged-in macOS user. Use the arm64 package on Apple silicon or the x86_64
+package on Intel; Companion and OBS must use the same native architecture.
+The installer will ask you to close Companion and OBS.
+
+Why Companion uses macOS Keychain
+
+When Companion opens after setup, macOS may ask permission to access its saved items:
+  - OBS Studio password: used to authenticate the OBS adapter's connection to OBS.
+  - Streamlabs API token: used to authenticate the Streamlabs adapter's connection.
+  - Secure connection identity (tls-identity): the private key and certificate used
+    to secure connections from your paired mobile devices.
+Each prompt authorizes access to the named saved item. If macOS requests a password
+in a Keychain dialog, use your Mac login/Keychain password, not your OBS password or
+Streamlabs token. Denying access prevents Companion from using that item.
+This development build may ask again after an update because its app signature changes.
+
+Choose Install and authorize the normal macOS installer dialog. Setup automatically:
+
+  - Installs or replaces panelive-companion.app in Applications.
+  - Installs the OBS plugin into the logged-in user's Library, using whole-bundle
+    replacement with rollback. OBS.app and its profiles and scenes are preserved.
+  - Creates missing Companion settings with OBS at 127.0.0.1:4455,
+    Streamlabs at 127.0.0.1:59650, and the Companion listener on port 7443.
+  - Always includes PaneLive Teleprompter. It is required and cannot be deselected.
+  - Records the installed integrations and opens Companion for that user.
+
+Existing Companion settings, credentials, identity and paired clients are preserved.
+Login startup remains under your control in Companion settings.
+
+On a fresh installation, finish authentication on the Adapters page:
+  OBS: enable the OBS WebSocket server and enter its password in Companion.
+  Streamlabs: enable third-party remote access and enter its API token in Companion.
+The installer never embeds a shared password or token and does not change backend settings.
+If you use different ports, edit them on the Adapters page.
+
+The OBS helper is installed automatically at:
+~/Library/Application Support/obs-studio/plugins/panelive-companion-obs-plugin.plugin
+No separate plugin installation command is required.
+
+This development package is unsigned and not notarized. The app and OBS helper retain
+their configured build signatures; local builds use the configured Apple Development team identity. macOS may require explicit approval in
+System Settings > Privacy & Security.
+
+The Companion is Apache-2.0; the separate OBS helper is GPL-2.0-or-later.
+Licenses, notices and the helper reinstall tool are available after installation at:
+/Library/Application Support/panelive-companion

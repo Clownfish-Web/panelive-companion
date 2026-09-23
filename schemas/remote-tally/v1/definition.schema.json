@@ -1,0 +1,246 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "label",
+    "mode",
+    "binding",
+    "scenes",
+    "sources",
+    "labels",
+    "showSecondaryLine",
+    "standby",
+    "advancedCountdowns",
+    "timer"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+    },
+    "mode": {
+      "enum": [
+        "FLOOD",
+        "DOT",
+        "BAR",
+        "OPERATOR"
+      ]
+    },
+    "binding": {
+      "enum": [
+        "SCENE",
+        "SOURCE",
+        "DOOR",
+        "ALL"
+      ]
+    },
+    "scenes": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+          }
+        }
+      }
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "OFF": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "PREVIEW": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "PROGRAM": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "RECORDING": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "STREAMING": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "STANDBY": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "COUNTDOWN": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "NEXT": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "SILENCE": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "LIVE": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "DISCONNECTED": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "SCENE_UNAVAILABLE": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "SOURCE_UNAVAILABLE": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "SOURCE_DATA_UNAVAILABLE": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+        }
+      }
+    },
+    "showSecondaryLine": {
+      "type": "boolean"
+    },
+    "standby": {
+      "type": "boolean"
+    },
+    "advancedCountdowns": {
+      "type": "boolean"
+    },
+    "timer": {
+      "enum": [
+        "TIME_IN_STATE",
+        "RECORDING",
+        "TIME_OF_DAY"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "binding": {
+            "const": "SCENE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "scenes": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "binding": {
+            "const": "SOURCE"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mode": {
+            "enum": [
+              "FLOOD",
+              "BAR"
+            ]
+          },
+          "sources": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

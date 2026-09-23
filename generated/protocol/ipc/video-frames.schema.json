@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio-remote.dev/protocol/1/ipc/video-frames.schema.json",
+  "title": "PaneLive Companion local video frame mapping",
+  "type": "object",
+  "required": [
+    "protocolVersion",
+    "mappingName",
+    "pixelFormat",
+    "tracks",
+    "slotsPerTrack"
+  ],
+  "properties": {
+    "protocolVersion": {
+      "const": "1.0.0"
+    },
+    "mappingName": {
+      "const": "Local\\panelive-companion.frames.v1"
+    },
+    "pixelFormat": {
+      "const": "BGRA8"
+    },
+    "tracks": {
+      "const": [
+        "program",
+        "preview"
+      ]
+    },
+    "slotsPerTrack": {
+      "const": 2
+    },
+    "maximumWidth": {
+      "const": 960
+    },
+    "maximumHeight": {
+      "const": 540
+    },
+    "synchronization": {
+      "const": "two-slot-seqlock"
+    }
+  },
+  "additionalProperties": false
+}

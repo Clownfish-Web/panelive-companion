@@ -1,0 +1,47 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "panelive-companion",
+  "version-semver": "0.1.0-beta.1",
+  "builtin-baseline": "39344dff01c5a5a0134caf2624cdd492f05d30ea",
+  "dependencies": [
+    {
+      "name": "civetweb",
+      "features": [
+        "ssl"
+      ]
+    },
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": [
+        "avcodec",
+        "avformat",
+        "swscale"
+      ]
+    },
+    {
+      "name": "libdatachannel",
+      "features": [
+        "srtp",
+        "ws"
+      ]
+    },
+    {
+      "name": "libsrtp",
+      "features": [
+        "openssl"
+      ]
+    },
+    {
+      "name": "libsrt",
+      "platform": "windows"
+    },
+    "libqrencode",
+    "libvpx",
+    "opus",
+    "nlohmann-json",
+    "openssl",
+    "sqlite3"
+  ],
+  "description": "PaneLive Companion - local production control and monitoring for paired mobile clients"
+}

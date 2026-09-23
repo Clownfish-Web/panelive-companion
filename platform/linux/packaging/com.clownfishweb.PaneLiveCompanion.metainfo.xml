@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.clownfishweb.PaneLiveCompanion</id>
+  <name>PaneLive Companion</name>
+  <summary>Secure mobile control and monitoring for OBS Studio</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="com.clownfishweb">
+    <name>ClownfishWeb</name>
+  </developer>
+  <url type="homepage">https://github.com/Clownfish-Web/obs-monitor-companion</url>
+  <content_rating type="oars-1.1"/>
+  <description>
+    <p>
+      PaneLive Companion exposes authenticated OBS controls and on-demand Program and Studio
+      Preview monitoring to paired mobile clients over HTTPS, WebSocket, and WebRTC.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.clownfishweb.PaneLiveCompanion.desktop</launchable>
+  <provides>
+    <binary>panelive-companion</binary>
+  </provides>
+  <releases>
+    <release type="development" version="0.1.0-beta.1" date="2026-09-04"/>
+  </releases>
+</component>

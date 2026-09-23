@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "healthUrl": "https://panelive.app/api/remote-tally/v1/health",
+  "enrollmentUrl": "https://panelive.app/api/remote-tally/v1/publishers/enroll",
+  "renewalUrl": "https://publish.panelive.app/api/remote-tally/v1/publishers/renew",
+  "managementBaseUrl": "https://publish.panelive.app/api/remote-tally/v1",
+  "publisherWebSocketUrl": "wss://publish.panelive.app/api/remote-tally/v1/ws",
+  "viewerOrigin": "https://panelive.app",
+  "viewerPageBaseUrl": "https://panelive.app/tally",
+  "viewerSessionUrl": "https://panelive.app/api/remote-tally/v1/viewer-sessions",
+  "viewerWebSocketUrl": "wss://panelive.app/api/remote-tally/v1/viewer-ws"
+}

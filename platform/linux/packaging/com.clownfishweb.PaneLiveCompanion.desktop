@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=PaneLive Companion
+Comment=Secure mobile control and monitoring companion for OBS Studio
+Exec=panelive-companion --open-management
+Icon=com.clownfishweb.PaneLiveCompanion
+Terminal=false
+Categories=AudioVideo;Recorder;
+StartupNotify=true
+StartupWMClass=panelive-companion
+Keywords=OBS;streaming;monitor;WebRTC;

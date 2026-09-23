@@ -1,0 +1,16 @@
+#pragma once
+
+#include <string_view>
+
+namespace studio_remote::tally::build
+{
+inline constexpr std::string_view health_url = "@REMOTE_TALLY_healthUrl@";
+inline constexpr std::string_view enrollment_url = "@REMOTE_TALLY_enrollmentUrl@";
+inline constexpr std::string_view renewal_url = "@REMOTE_TALLY_renewalUrl@";
+inline constexpr std::string_view management_base_url = "@REMOTE_TALLY_managementBaseUrl@";
+inline constexpr std::string_view publisher_websocket_url = "@REMOTE_TALLY_publisherWebSocketUrl@";
+inline constexpr std::string_view viewer_origin = "@REMOTE_TALLY_viewerOrigin@";
+inline constexpr std::string_view viewer_page_base_url = "@REMOTE_TALLY_viewerPageBaseUrl@";
+inline constexpr std::string_view viewer_session_url = "@REMOTE_TALLY_viewerSessionUrl@";
+inline constexpr std::string_view viewer_websocket_url = "@REMOTE_TALLY_viewerWebSocketUrl@";
+} // namespace studio_remote::tally::build

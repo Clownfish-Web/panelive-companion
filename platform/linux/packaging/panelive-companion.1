@@ -1,0 +1,39 @@
+.TH PANELIVE-COMPANION 1 "September 2026" "0.1.0-beta.1" "User Commands"
+.SH NAME
+panelive-companion \- secure OBS Studio mobile companion
+.SH SYNOPSIS
+.B panelive-companion
+.RI [ options ]
+.SH DESCRIPTION
+Runs the headless PaneLive Companion HTTPS, WebSocket, and WebRTC gateway and connects it to
+OBS Studio through OBS WebSocket v5.
+.SH OPTIONS
+.TP
+.B \-\-open-management
+Open the GTK management window.
+.TP
+.BI \-\-name " name"
+Set the advertised Companion name.
+.TP
+.BI \-\-gateway-port " port"
+Set the HTTPS and WebSocket listener port.
+.TP
+.BI \-\-obs-host " host"
+Set the OBS WebSocket host.
+.TP
+.BI \-\-obs-port " port"
+Set the OBS WebSocket port.
+.TP
+.BI \-\-obs-password " password"
+Store the OBS password in the desktop Secret Service.
+.TP
+.B \-\-help
+Show command-line help.
+.TP
+.B \-\-version
+Show the Companion version.
+.SH FILES
+.I ~/.local/state/panelive-companion
+contains current-user configuration, TLS identity, database, and diagnostics.
+.SH SEE ALSO
+.BR obs (1)

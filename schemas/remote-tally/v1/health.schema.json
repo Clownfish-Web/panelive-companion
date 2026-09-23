@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "protocol", "status"],
+  "properties": {
+    "version": {"const": 1, "type": "integer"},
+    "protocol": {"const": "remote-tally.v1"},
+    "status": {"enum": ["healthy", "unhealthy"]}
+  }
+}

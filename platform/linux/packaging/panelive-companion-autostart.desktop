@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PaneLive Companion
+Comment=Start PaneLive Companion for this desktop session
+Exec=panelive-companion
+Icon=com.clownfishweb.PaneLiveCompanion
+Terminal=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

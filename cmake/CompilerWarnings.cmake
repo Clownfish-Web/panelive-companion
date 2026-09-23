@@ -1,0 +1,16 @@
+function(studio_remote_set_warnings target)
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4 /permissive- /Zc:__cplusplus
+      $<$<BOOL:${STUDIO_REMOTE_WARNINGS_AS_ERRORS}>:/WX>)
+  else()
+    if(APPLE)
+      target_compile_options(${target} PRIVATE -Werror=unguarded-availability-new)
+    endif()
+    target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic
+      $<$<BOOL:${STUDIO_REMOTE_WARNINGS_AS_ERRORS}>:-Werror>)
+    if(STUDIO_REMOTE_ENABLE_SANITIZERS)
+      target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+      target_link_options(${target} PRIVATE -fsanitize=address,undefined)
+    endif()
+  endif()
+endfunction()

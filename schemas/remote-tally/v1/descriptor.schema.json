@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "publicationId", "tallyId", "clientProfileId", "revision",
+    "configRevision", "remoteRevision", "remoteConfigRevision", "status", "reason",
+    "viewUrl", "lastSyncedAt", "operationId"],
+  "properties": {
+    "version": {"type": "integer", "const": 1},
+    "publicationId": {"$ref": "#/$defs/uuid"},
+    "operationId": {"$ref": "#/$defs/uuid"},
+    "tallyId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "clientProfileId": {"type": "string", "minLength": 1, "maxLength": 128},
+    "revision": {"$ref": "#/$defs/revision"},
+    "configRevision": {"$ref": "#/$defs/revision"},
+    "remoteRevision": {"anyOf": [{"$ref": "#/$defs/revision"}, {"type": "null"}]},
+    "remoteConfigRevision": {"anyOf": [{"$ref": "#/$defs/revision"}, {"type": "null"}]},
+    "status": {"enum": ["pending", "provisioned", "live", "reconnecting", "sync-pending", "error", "revoking", "revoked"]},
+    "reason": {"type": ["string", "null"], "maxLength": 128},
+    "viewUrl": {"type": ["string", "null"], "maxLength": 2048},
+    "lastSyncedAt": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "revision": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+  }
+}

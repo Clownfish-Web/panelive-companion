@@ -1,0 +1,6 @@
+panelive-companion (0.1.0~beta.1) unstable; urgency=medium
+
+  * Initial native Ubuntu beta package.
+  * Add OBS WebSocket control and native Program/Preview video IPC.
+
+ -- ClownfishWeb <support@clownfishweb.com>  Fri, 04 Sep 2026 12:00:00 +0200

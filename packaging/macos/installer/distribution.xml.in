@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>PaneLive Companion</title>
+  <options customize="never" require-scripts="true" hostArchitectures="@MACOS_ARCHITECTURE@"/>
+  <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+  <volume-check script="checkVolume()">
+    <allowed-os-versions><os-version min="13.0"/></allowed-os-versions>
+  </volume-check>
+  <script><![CDATA[
+    function checkVolume() {
+      if (my.target.mountpoint == "/") return true;
+      my.result.type = "Fatal";
+      my.result.message = "Install Companion on the currently running macOS volume.";
+      return false;
+    }
+  ]]></script>
+  <readme file="INSTALL_MACOS.txt" mime-type="text/plain"/>
+  <license file="LICENSE" mime-type="text/plain"/>
+  <choices-outline><line choice="panelive-companion"/></choices-outline>
+  <choice id="panelive-companion" visible="false" selected="true" enabled="false"
+          title="PaneLive Companion with required Teleprompter, OBS and Streamlabs support">
+    <pkg-ref id="panelive-companion"/>
+  </choice>
+  <pkg-ref id="panelive-companion">panelive-companion.pkg</pkg-ref>
+  <pkg-ref id="panelive-companion">
+    <must-close>
+      <app id="panelive-companion"/>
+      <app id="com.obsproject.obs-studio"/>
+    </must-close>
+  </pkg-ref>
+</installer-gui-script>

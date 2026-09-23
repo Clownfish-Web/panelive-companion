@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "operationId",
+    "expectedRevision",
+    "clientProfileId",
+    "definition"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "operationId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "clientProfileId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]*$"
+    },
+    "definition": {
+      "$ref": "definition.schema.json"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,0 +1,10 @@
+PaneLive Companion
+Copyright 2026 Clownfish Web Artur Cichosz and contributors
+
+PaneLive Companion is an independent companion sidecar and is not an
+official OBS Project product. OBS is a trademark of its respective owner.
+
+This distribution includes software developed by third parties. The component
+and license map is in THIRD_PARTY_NOTICES.md; complete third-party license texts
+are installed under share/panelive-companion/licenses/ in
+binary packages.

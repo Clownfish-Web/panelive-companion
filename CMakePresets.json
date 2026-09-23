@@ -1,0 +1,170 @@
+{
+  "version": 8,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "VCPKG_OVERLAY_PORTS": "${sourceDir}/cmake/overlays"
+      }
+    },
+    {
+      "name": "windows-x64-debug",
+      "inherits": "base",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "windows-x64-release",
+      "inherits": "base",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "STUDIO_REMOTE_WARNINGS_AS_ERRORS": "ON",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_STREAMLABS": "ON",
+        "STUDIO_REMOTE_VMIX_AUDIO_ADAPTER": "OMT",
+        "STUDIO_REMOTE_STAGE_WINDOWS_APP_RUNTIME_INSTALLER": "ON"
+      }
+    },
+    {
+      "name": "windows-arm64-release",
+      "inherits": "base",
+      "architecture": {
+        "value": "arm64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "arm64-windows",
+        "STUDIO_REMOTE_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "macos-arm64-debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/triplets",
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_VMIX": "OFF",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_STREAMLABS": "ON"
+      }
+    },
+    {
+      "name": "macos-arm64-release",
+      "inherits": "macos-arm64-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "STUDIO_REMOTE_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "macos-x64-debug",
+      "inherits": "macos-arm64-debug",
+      "cacheVariables": {
+        "CMAKE_OSX_ARCHITECTURES": "x86_64",
+        "VCPKG_TARGET_TRIPLET": "x64-osx"
+      }
+    },
+    {
+      "name": "macos-x64-release",
+      "inherits": "macos-x64-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "STUDIO_REMOTE_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "linux-x64-debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "VCPKG_TARGET_TRIPLET": "x64-linux",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_VMIX": "OFF",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_STREAMLABS": "OFF",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_XSPLIT": "OFF",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_WIRECAST": "OFF",
+        "STUDIO_REMOTE_VMIX_AUDIO_ADAPTER": "NONE"
+      }
+    },
+    {
+      "name": "linux-x64-release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-linux",
+        "STUDIO_REMOTE_WARNINGS_AS_ERRORS": "ON",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_VMIX": "OFF",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_STREAMLABS": "OFF",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_XSPLIT": "OFF",
+        "STUDIO_REMOTE_ENABLE_PROVIDER_WIRECAST": "OFF",
+        "STUDIO_REMOTE_VMIX_AUDIO_ADAPTER": "NONE"
+      }
+    },
+    {
+      "name": "linux-x64-asan",
+      "inherits": "linux-x64-debug",
+      "cacheVariables": {
+        "STUDIO_REMOTE_ENABLE_SANITIZERS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-x64-debug",
+      "configurePreset": "windows-x64-debug"
+    },
+    {
+      "name": "windows-x64-release",
+      "configurePreset": "windows-x64-release"
+    },
+    {
+      "name": "windows-arm64-release",
+      "configurePreset": "windows-arm64-release"
+    },
+    {
+      "name": "macos-arm64-debug",
+      "configurePreset": "macos-arm64-debug"
+    },
+    {
+      "name": "macos-arm64-release",
+      "configurePreset": "macos-arm64-release"
+    },
+    {
+      "name": "macos-x64-debug",
+      "configurePreset": "macos-x64-debug"
+    },
+    {
+      "name": "macos-x64-release",
+      "configurePreset": "macos-x64-release"
+    },
+    {
+      "name": "linux-x64-debug",
+      "configurePreset": "linux-x64-debug"
+    },
+    {
+      "name": "linux-x64-release",
+      "configurePreset": "linux-x64-release"
+    },
+    {
+      "name": "linux-x64-asan",
+      "configurePreset": "linux-x64-asan"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/com/clownfishweb/PaneLiveCompanion">
+    <file alias="icon-32.png">platform/windows/resources/panelive-companion-32.png</file>
+    <file alias="icon-128.png">platform/windows/resources/panelive-companion-128.png</file>
+  </gresource>
+</gresources>

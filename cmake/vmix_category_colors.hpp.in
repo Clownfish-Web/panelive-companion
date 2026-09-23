@@ -1,0 +1,19 @@
+#pragma once
+
+#include <array>
+#include <string_view>
+
+namespace studio_remote::vmix::build
+{
+
+inline constexpr std::array<std::string_view, 7> input_category_colors = {
+    "",
+    "@STUDIO_REMOTE_VMIX_CATEGORY_1_COLOR@",
+    "@STUDIO_REMOTE_VMIX_CATEGORY_2_COLOR@",
+    "@STUDIO_REMOTE_VMIX_CATEGORY_3_COLOR@",
+    "@STUDIO_REMOTE_VMIX_CATEGORY_4_COLOR@",
+    "@STUDIO_REMOTE_VMIX_CATEGORY_5_COLOR@",
+    "@STUDIO_REMOTE_VMIX_CATEGORY_6_COLOR@",
+};
+
+} // namespace studio_remote::vmix::build

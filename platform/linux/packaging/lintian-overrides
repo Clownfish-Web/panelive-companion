@@ -1,0 +1,3 @@
+# Portable dependencies are pinned and linked statically by the repository vcpkg manifest.
+panelive-companion: embedded-library srtp [usr/bin/panelive-companion]
+panelive-companion: embedded-library zlib [usr/bin/panelive-companion]

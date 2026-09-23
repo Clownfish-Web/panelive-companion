@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 1,
+  "providerId": "xsplit",
+  "displayName": "XSplit Broadcaster",
+  "implementationStatus": "research",
+  "installable": false,
+  "runtimeRegistered": false,
+  "nativeHelper": "undetermined"
+}

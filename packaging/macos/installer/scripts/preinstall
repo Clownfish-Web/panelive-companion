@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+script_directory=$(cd -- "$(dirname -- "$0")" && pwd -P)
+source "$script_directory/installer-environment.sh"
+installer_context "${3:-}"
+require_closed_applications
+
+# Use the existing record/LaunchServices/default detection before payload placement.
+obs_directory=$(as_installer_user "$script_directory/panelive-companion.app/Contents/MacOS/panelive-companion" \
+  --detect-obs-installation)
+source "$script_directory/Install-ObsPlugin.sh"
+verify_obs_compatibility "$obs_directory" \
+  "$script_directory/panelive-companion-obs-plugin.plugin/Contents/MacOS/panelive-companion-obs-plugin"

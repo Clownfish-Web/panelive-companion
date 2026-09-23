@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>panelive-companion-obs-plugin</string>
+  <key>CFBundleExecutable</key><string>panelive-companion-obs-plugin</string>
+  <key>CFBundleName</key><string>PaneLive Companion</string>
+  <key>CFBundlePackageType</key><string>BNDL</string>
+  <key>CFBundleShortVersionString</key><string>@PROJECT_VERSION@</string>
+  <key>CFBundleVersion</key><string>@PROJECT_VERSION@</string>
+  <key>PaneLiveBuildVersion</key><string>@STUDIO_REMOTE_BUILD_VERSION@</string>
+  <key>LSMinimumSystemVersion</key><string>@CMAKE_OSX_DEPLOYMENT_TARGET@</string>
+</dict></plist>

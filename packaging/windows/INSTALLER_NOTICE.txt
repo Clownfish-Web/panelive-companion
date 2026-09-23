@@ -1,0 +1,39 @@
+PaneLive Companion - installation and licensing
+
+PaneLive Companion provides local production control, monitoring, and teleprompting.
+
+Your license
+
+The Companion is licensed under Apache-2.0. The optional OBS plugin is licensed
+under GPL-2.0-or-later. Third-party components retain their own licenses. You may
+use, modify, and redistribute the software, including commercially, under the
+applicable terms. Redistributors must retain required notices, identify changes,
+and satisfy applicable source-code obligations.
+
+The licenses include warranty disclaimers and liability limits, subject to
+applicable law. The full Apache terms appear on the license page. Complete licenses
+and notices are installed under share/panelive-companion/; the selected OBS plugin
+also includes its own LICENSE. This notice summarizes those terms and adds no
+restrictions. PaneLive Companion is an independent project; product names and
+trademarks belong to their respective owners.
+
+Before you install
+
+- Requires Windows 10 or 11, x64. Setup installs the Companion and required Windows
+  App Runtime for your account. Run setup normally, without Run as administrator.
+- Teleprompter is always included. OBS Studio, vMix, and Streamlabs Desktop adapters
+  are optional; install those applications separately. Close OBS before installing,
+  updating, or removing its plugin, and run OBS and Companion as the same user.
+- The standard vMix build uses SRT for video and OMT for monitoring audio. Optional
+  NDI integrations require a separately installed runtime under its own terms.
+- Pair only trusted clients. Operator and admin clients can control production
+  applications and invoke keyboard shortcuts on this computer.
+- A firewall rule for local clients on private networks is selected by default.
+  Only firewall changes and protected OBS plugin files request administrator
+  approval when necessary. Setup and uninstall use native installer code, without
+  PowerShell or command windows. Sign-in startup is optional and applies only to you.
+- Setup and uninstall close Companion before changing files. An unresponsive
+  Companion process is force-stopped after a short shutdown timeout.
+- Uninstall preserves your profile by default. Choosing a factory reset, or using
+  /PURGEIDENTITY during unattended uninstall, permanently deletes that profile,
+  including its identity, paired-device credentials, and settings.

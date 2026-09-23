@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 1,
+  "providerId": "wirecast",
+  "displayName": "Wirecast",
+  "implementationStatus": "research",
+  "installable": false,
+  "runtimeRegistered": false,
+  "nativeHelper": "undetermined"
+}

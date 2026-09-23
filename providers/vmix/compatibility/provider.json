@@ -1,0 +1,12 @@
+{
+  "manifestVersion": 1,
+  "providerId": "vmix",
+  "displayName": "vMix",
+  "implementationStatus": "implemented",
+  "installable": true,
+  "runtimeRegistered": true,
+  "nativeHelper": "not-required",
+  "supportedVersions": ["29.x"],
+  "controlApi": "HTTP Web API",
+  "media": "optional NDI receiver"
+}

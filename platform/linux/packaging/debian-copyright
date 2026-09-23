@@ -1,0 +1,15 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: PaneLive Companion
+Source: https://github.com/Clownfish-Web/obs-monitor-companion
+
+Files: *
+Copyright: 2026 Clownfish Web, Artur Cichosz, and contributors
+License: Apache-2.0
+ On Debian systems, the complete Apache License, Version 2.0 is available in
+ /usr/share/common-licenses/Apache-2.0.
+
+Files: obs-plugin/*
+Copyright: 2026 Clownfish Web, Artur Cichosz, and contributors
+License: GPL-2+
+ On Debian systems, the complete GNU General Public License, Version 2 is
+ available in /usr/share/common-licenses/GPL-2.

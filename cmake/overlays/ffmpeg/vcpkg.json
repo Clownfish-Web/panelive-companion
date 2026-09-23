@@ -1,0 +1,28 @@
+{
+  "name": "ffmpeg",
+  "version": "9.0.1",
+  "port-version": 0,
+  "description": "Cross-platform FFmpeg 9.0.1 override for panelive-companion.",
+  "homepage": "https://ffmpeg.org",
+  "license": "LGPL-2.1-or-later",
+  "dependencies": [
+    { "name": "vcpkg-cmake-get-vars", "host": true },
+    { "name": "vcpkg-pkgconfig-get-modules", "host": true }
+  ],
+  "default-features": [
+    "avcodec",
+    "avdevice",
+    "avfilter",
+    "avformat",
+    "swresample",
+    "swscale"
+  ],
+  "features": {
+    "avcodec": { "description": "Build libavcodec." },
+    "avdevice": { "description": "Build libavdevice." },
+    "avfilter": { "description": "Build libavfilter." },
+    "avformat": { "description": "Build libavformat." },
+    "swresample": { "description": "Build libswresample." },
+    "swscale": { "description": "Build libswscale." }
+  }
+}
