@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <fcntl.h>
 #include <fstream>
+#include <glib.h>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <system_error>
@@ -23,31 +25,25 @@ std::filesystem::path environment_path(const char* name)
 
 std::size_t utf8_code_points(std::string_view text)
 {
-  std::size_t count = 0;
-  for (std::size_t offset = 0; offset < text.size(); ++count)
-  {
-    const auto first = static_cast<unsigned char>(text[offset]);
-    const std::size_t width = first < 0x80             ? 1
-                              : (first & 0xe0) == 0xc0 ? 2
-                              : (first & 0xf0) == 0xe0 ? 3
-                              : (first & 0xf8) == 0xf0 ? 4
-                                                       : 0;
-    if (!width || offset + width > text.size())
-      throw std::invalid_argument("Gateway name is not valid UTF-8");
-    for (std::size_t index = 1; index < width; ++index)
-      if ((static_cast<unsigned char>(text[offset + index]) & 0xc0) != 0x80)
-        throw std::invalid_argument("Gateway name is not valid UTF-8");
-    offset += width;
-  }
-  return count;
+  if (text.size() > static_cast<std::size_t>(std::numeric_limits<gssize>::max()) ||
+      !g_utf8_validate(text.data(), static_cast<gssize>(text.size()), nullptr))
+    throw std::invalid_argument("Gateway name is not valid UTF-8");
+  return static_cast<std::size_t>(g_utf8_strlen(text.data(), static_cast<gssize>(text.size())));
 }
 
-std::uint16_t required_port(const json& data, std::string_view key, std::uint16_t fallback)
+std::uint64_t
+integer(const json& data, std::string_view key, std::uint64_t fallback, std::uint64_t maximum)
 {
-  const auto value = data.value(std::string(key), static_cast<int>(fallback));
-  if (value < 1 || value > 65'535)
+  const auto found = data.find(key);
+  if (found == data.end())
+    return fallback;
+  if (!found->is_number_integer() ||
+      (!found->is_number_unsigned() && found->get<std::int64_t>() < 1))
     throw std::invalid_argument(std::string(key) + " is out of range");
-  return static_cast<std::uint16_t>(value);
+  const auto value = found->get<std::uint64_t>();
+  if (value < 1 || value > maximum)
+    throw std::invalid_argument(std::string(key) + " is out of range");
+  return value;
 }
 
 void restrict_directory(const std::filesystem::path& directory)
@@ -83,35 +79,40 @@ GatewayConfig ConfigStore::load()
   result.data_directory = directory_;
   const auto path = directory_ / "config.json";
   if (std::filesystem::exists(path))
-  {
-    std::ifstream stream(path);
-    if (!stream)
-      throw std::runtime_error("Could not open Linux Companion configuration");
-    const auto data = json::parse(stream);
-    result.name = data.value("name", result.name);
-    result.instance_id = data.value("instanceId", "");
-    result.instance_revision = data.value("instanceRevision", 1ULL);
-    result.port = required_port(data, "port", 7443);
-    result.pairing_address = data.value("pairingAddress", "");
-    result.obs_host = data.value("obsHost", "127.0.0.1");
-    result.obs_port = required_port(data, "obsPort", 4455);
-    result.obs_connection_configured =
-        data.value("obsConnectionConfigured", data.contains("obsHost"));
-    result.default_pairing_role = parse_role(data.value("defaultPairingRole", "viewer"));
-    result.allow_non_private_interfaces = data.value("allowNonPrivateInterfaces", false);
-    result.enforce_single_operator_client_mode =
-        data.value("enforceSingleOperatorClientMode", true);
-    result.start_at_login = data.value("startAtLogin", false);
-    result.management_interface_mode =
-        management_interface_mode_or_default(data.value("managementInterfaceMode", "basic"));
-    result.automatic_audio_headroom = data.value("automaticAudioHeadroom", true);
-    result.audio_headroom_per_additional_source_db =
-        data.value("audioHeadroomPerAdditionalSourceDb", 2U);
-    if (result.audio_headroom_per_additional_source_db < 1 ||
-        result.audio_headroom_per_additional_source_db > 4)
-      result.audio_headroom_per_additional_source_db = 2;
-    result.audio_source_audition_bus = data.value("audioSourceAuditionBus", false);
-  }
+    try
+    {
+      std::ifstream stream(path);
+      if (!stream)
+        throw std::runtime_error("Could not open Linux Companion configuration");
+      const auto data = json::parse(stream);
+      if (!data.is_object())
+        throw std::invalid_argument("Configuration must be a JSON object");
+      result.name = data.value("name", result.name);
+      result.instance_id = data.value("instanceId", "");
+      result.instance_revision =
+          integer(data, "instanceRevision", 1, std::numeric_limits<std::uint64_t>::max());
+      result.port = static_cast<std::uint16_t>(integer(data, "port", 7443, 65'535));
+      result.pairing_address = data.value("pairingAddress", "");
+      result.obs_host = data.value("obsHost", "127.0.0.1");
+      result.obs_port = static_cast<std::uint16_t>(integer(data, "obsPort", 4455, 65'535));
+      result.obs_connection_configured = data.value(
+          "obsConnectionConfigured", data.contains("obsHost") && data.contains("obsPort"));
+      result.default_pairing_role = parse_role(data.value("defaultPairingRole", "viewer"));
+      result.allow_non_private_interfaces = data.value("allowNonPrivateInterfaces", false);
+      result.enforce_single_operator_client_mode =
+          data.value("enforceSingleOperatorClientMode", true);
+      result.start_at_login = data.value("startAtLogin", false);
+      result.management_interface_mode =
+          management_interface_mode_or_default(data.value("managementInterfaceMode", "basic"));
+      result.automatic_audio_headroom = data.value("automaticAudioHeadroom", true);
+      result.audio_headroom_per_additional_source_db =
+          static_cast<std::uint32_t>(integer(data, "audioHeadroomPerAdditionalSourceDb", 2, 4));
+      result.audio_source_audition_bus = data.value("audioSourceAuditionBus", false);
+    }
+    catch (const json::exception&)
+    {
+      throw std::invalid_argument("Linux configuration contains invalid JSON or field types");
+    }
   if (result.instance_id.empty())
     result.instance_id = crypto::uuid_v4();
   result.certificate =
@@ -121,12 +122,19 @@ GatewayConfig ConfigStore::load()
 
 void ConfigStore::save(const GatewayConfig& config) const
 {
+  if (!config.port || !config.obs_port)
+    throw std::invalid_argument("Gateway or OBS port is out of range");
+  if (!config.instance_revision)
+    throw std::invalid_argument("Gateway instance identity is required");
+  if (config.audio_headroom_per_additional_source_db < 1 ||
+      config.audio_headroom_per_additional_source_db > 4)
+    throw std::invalid_argument("Audio monitor headroom preset is invalid");
   auto trimmed = config.name;
   while (!trimmed.empty() && std::isspace(static_cast<unsigned char>(trimmed.front())))
     trimmed.erase(trimmed.begin());
   while (!trimmed.empty() && std::isspace(static_cast<unsigned char>(trimmed.back())))
     trimmed.pop_back();
-  if (trimmed.empty() || utf8_code_points(trimmed) > 63)
+  if (trimmed.empty() || trimmed.find('\0') != std::string::npos || utf8_code_points(trimmed) > 63)
     throw std::invalid_argument("Gateway name must contain 1-63 Unicode characters");
   if (config.instance_id.empty())
     throw std::invalid_argument("Gateway instance identifier is required");
@@ -158,6 +166,9 @@ void ConfigStore::save(const GatewayConfig& config) const
     stream.flush();
     if (!stream)
       throw std::runtime_error("Could not write Linux Companion configuration");
+    stream.close();
+    if (!stream)
+      throw std::runtime_error("Could not close Linux Companion configuration");
   }
   std::filesystem::permissions(temporary,
                                std::filesystem::perms::owner_read |

@@ -37,7 +37,7 @@ void bind_change(gpointer source, const char* signal, EditAction action)
       G_CALLBACK(changed),
       owned.release(),
       [](gpointer data, GClosure*) { delete static_cast<EditAction*>(data); },
-      G_CONNECT_DEFAULT);
+      static_cast<GConnectFlags>(0));
 }
 
 std::string bounded_text(const char* text, std::size_t maximum_units)

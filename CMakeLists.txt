@@ -573,6 +573,12 @@ elseif(APPLE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(PkgConfig REQUIRED)
   find_package(JPEG REQUIRED)
+  # Ubuntu and Debian use different libjpeg SONAMEs. Link the distro-provided archive so the
+  # same baseline-built Companion can run on both without installing a foreign JPEG package.
+  find_library(STUDIO_REMOTE_JPEG_ARCHIVE NAMES libjpeg.a REQUIRED)
+  find_file(STUDIO_REMOTE_JPEG_NOTICE copyright
+    PATHS /usr/share/doc/libjpeg-turbo8-dev /usr/share/doc/libjpeg62-turbo-dev
+    NO_DEFAULT_PATH REQUIRED)
   pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1>=0.20)
   pkg_check_modules(AVAHI REQUIRED IMPORTED_TARGET avahi-client>=0.8)
   pkg_check_modules(PULSE REQUIRED IMPORTED_TARGET libpulse>=15.0)
@@ -603,13 +609,14 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     studio_remote_core
     studio_remote_obs_adapter
     LibDataChannel::LibDataChannel
-    JPEG::JPEG
+    "${STUDIO_REMOTE_JPEG_ARCHIVE}"
     OpenSSL::Crypto
     PkgConfig::AVAHI
     PkgConfig::LIBSECRET
     PkgConfig::PULSE
     PkgConfig::PULSE_SIMPLE)
   studio_remote_set_warnings(studio_remote_platform_linux)
+  target_include_directories(studio_remote_platform_linux PRIVATE "${JPEG_INCLUDE_DIR}")
   set(STUDIO_REMOTE_PLATFORM_TARGET studio_remote_platform_linux)
 else()
   message(FATAL_ERROR "Unsupported platform")
@@ -665,6 +672,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_library(studio_remote_ui_linux STATIC
     "${STUDIO_REMOTE_LINUX_UI_RESOURCES}"
     ui/linux/linux_about_page.cpp
+    ui/linux/linux_approval_dialogs.cpp
     ui/linux/linux_advanced_settings_page.cpp
     ui/linux/linux_clients_page.cpp
     ui/linux/linux_teleprompter_page.cpp
@@ -675,18 +683,27 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     ui/linux/linux_diagnostics_page.cpp
     ui/linux/linux_management_ui.cpp
     ui/linux/linux_management_window.cpp
+    ui/linux/linux_management_pages_host.cpp
+    ui/linux/linux_form_choices.cpp
     ui/linux/linux_pairing_qr.cpp
+    ui/linux/linux_pairing_preview.cpp
     ui/linux/linux_status_page.cpp
     ui/linux/linux_status_notifier_item.cpp
     ui/linux/linux_ui_helpers.cpp)
-  target_include_directories(studio_remote_ui_linux PUBLIC ui/linux PRIVATE
-    ${QRENCODE_INCLUDE_DIR})
+  target_include_directories(studio_remote_ui_linux PUBLIC ui/linux)
+  target_compile_definitions(studio_remote_ui_linux PUBLIC
+    GLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_72
+    GLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_72
+    GDK_VERSION_MIN_REQUIRED=GDK_VERSION_4_6
+    GDK_VERSION_MAX_ALLOWED=GDK_VERSION_4_6
+    ADW_VERSION_MIN_REQUIRED=ADW_VERSION_1_1
+    ADW_VERSION_MAX_ALLOWED=ADW_VERSION_1_1)
   target_link_libraries(studio_remote_ui_linux PUBLIC
+    studio_remote_pairing_qr
     studio_remote_platform_linux
     studio_remote_application
     PkgConfig::ADWAITA
-    PkgConfig::GTK4
-    ${QRENCODE_LIBRARY})
+    PkgConfig::GTK4)
   studio_remote_set_warnings(studio_remote_ui_linux)
   set(STUDIO_REMOTE_UI_TARGET studio_remote_ui_linux)
 endif()
@@ -843,6 +860,9 @@ if(WIN32)
     RENAME copyright)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  install(FILES "${STUDIO_REMOTE_JPEG_NOTICE}"
+    DESTINATION "share/panelive-companion/licenses"
+    RENAME libjpeg-turbo.txt)
   install(FILES
     platform/linux/packaging/com.clownfishweb.PaneLiveCompanion.desktop
     DESTINATION share/applications)
@@ -873,6 +893,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     RENAME copyright)
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
     DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}")
+  install(FILES platform/linux/packaging/obs-plugin-copyright
+    DESTINATION "share/doc/panelive-companion-obs-plugin"
+    RENAME copyright COMPONENT OBSPlugin)
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
+    DESTINATION "share/doc/panelive-companion-obs-plugin" COMPONENT OBSPlugin)
   configure_file(platform/linux/packaging/panelive-companion.1
     "${CMAKE_CURRENT_BINARY_DIR}/panelive-companion.1" COPYONLY)
   execute_process(
@@ -980,6 +1005,16 @@ if(DEFINED VCPKG_INSTALLED_DIR)
     else()
       message(FATAL_ERROR "Missing required license text: ${copyright_file}")
     endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      set(sbom_file
+        "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/${dependency}/vcpkg.spdx.json")
+      if(NOT EXISTS "${sbom_file}")
+        message(FATAL_ERROR "Missing dependency SPDX inventory: ${sbom_file}")
+      endif()
+      install(FILES "${sbom_file}"
+        DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/sbom"
+        RENAME "${dependency}.spdx.json")
+    endif()
   endforeach()
 endif()
 
@@ -991,16 +1026,30 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(CPACK_PACKAGE_CONTACT "ClownfishWeb <support@clownfishweb.com>")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Secure mobile production control and monitoring")
-  set(CPACK_PACKAGE_DESCRIPTION "PaneLive Companion connects paired mobile clients to production software.\n It supports OBS Studio, vMix on Windows, and Streamlabs Desktop on Windows and macOS, with features varying by backend.\n This Linux package supports OBS Studio and a standalone teleprompter.\n A separately licensed OBS helper delivers Program and Studio Preview frames.")
+  set(CPACK_PACKAGE_DESCRIPTION "PaneLive Companion connects paired mobile clients to production software.\n This Linux package supports OBS Studio and a standalone teleprompter.\n The native GTK management window controls pairing and local approvals.\n A separately licensed OBS helper delivers Program and Studio Preview frames.")
   set(CPACK_PACKAGE_VERSION "${STUDIO_REMOTE_BUILD_VERSION}")
   set(CPACK_DEBIAN_PACKAGE_VERSION "${STUDIO_REMOTE_DEBIAN_VERSION}")
   set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
   set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
   set(CPACK_DEBIAN_PACKAGE_SECTION video)
   set(CPACK_DEBIAN_PACKAGE_PRIORITY optional)
-  set(CPACK_DEBIAN_PACKAGE_DEPENDS
-    "libc6 (>= 2.35), libstdc++6, libsecret-1-0 (>= 0.20), libavahi-client3 (>= 0.8), libgtk-4-1 (>= 4.6), libadwaita-1-0 (>= 1.1), libpulse0 (>= 15.0), libjpeg8 (>= 8c), obs-studio (>= 28.0)")
-  set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "obs-studio (>= 28)")
+  # Derive native ABI requirements from the actual payload, including the separately licensed
+  # OBS module. Hard-coded libc/JPEG package names misrepresent cross-distribution compatibility.
+  set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+  set(CPACK_DEB_COMPONENT_INSTALL ON)
+  set(CPACK_COMPONENTS_ALL Unspecified OBSPlugin)
+  set(CPACK_DEBIAN_UNSPECIFIED_PACKAGE_NAME "panelive-companion")
+  set(CPACK_DEBIAN_OBSPLUGIN_PACKAGE_NAME "panelive-companion-obs-plugin")
+  set(CPACK_DEBIAN_OBSPLUGIN_PACKAGE_DEPENDS "obs-studio (>= 30.0)")
+  set(CPACK_COMPONENT_UNSPECIFIED_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
+  set(CPACK_COMPONENT_OBSPLUGIN_DESCRIPTION
+    "OBS helper for PaneLive Companion\n Separately licensed GPL-2.0-or-later OBS module publishing headless media\n through owner-restricted local IPC.")
+  set(CPACK_DEBIAN_UNSPECIFIED_PACKAGE_SUGGESTS
+    "panelive-companion-obs-plugin (= ${STUDIO_REMOTE_DEBIAN_VERSION})")
+  set(CPACK_DEBIAN_UNSPECIFIED_PACKAGE_RECOMMENDS
+    "gnome-keyring, dbus-user-session, avahi-daemon")
+  set(CPACK_DEBIAN_OBSPLUGIN_PACKAGE_DESCRIPTION
+    "${CPACK_COMPONENT_OBSPLUGIN_DESCRIPTION}")
   set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
   set(CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE

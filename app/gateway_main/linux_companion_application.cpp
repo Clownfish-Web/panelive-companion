@@ -3,6 +3,7 @@
 #include "linux_companion_services.hpp"
 #include "linux_gateway_advertisement.hpp"
 #include "linux_management_composition.hpp"
+#include "obs_media_delivery.hpp"
 #include "platform_companion_application.hpp"
 
 #include "../../platform/linux/capture/linux_audio_mixer_roster.hpp"
@@ -70,64 +71,15 @@ void apply_command_line_overrides(GatewayConfig& config, const CommandLine& comm
     config.pairing_address = addresses.empty() ? std::string{} : addresses.front();
 }
 
-// Video track epochs let clients distinguish a restarted helper from a stalled one.
-struct VideoTrackEpochs
-{
-  std::atomic<std::uint64_t> program{1};
-  std::atomic<std::uint64_t> preview{1};
-};
-
-CaptureManager
-make_capture_manager(GatewayRuntime& runtime, WebRtcHub& webrtc, VideoTrackEpochs& epochs)
+CaptureManager make_capture_manager(ObsMediaDelivery& delivery, WebRtcHub& webrtc)
 {
   return CaptureManager(
-      [&runtime, &webrtc](std::string_view track, std::shared_ptr<const RawVideoFrame> frame)
-      {
-        if (track == "preview" && !runtime.state().studio_mode())
-          return;
-        webrtc.push_frame(track, std::move(frame));
-      },
-      [&runtime, &epochs](std::string_view track, const json& health)
-      {
-        auto value = health;
-        value["trackEpoch"] = track == "program" ? epochs.program.load() : epochs.preview.load();
-        runtime.state().set_video_health(track, value);
-      },
+      [&delivery](std::string_view track, std::shared_ptr<const RawVideoFrame> frame)
+      { delivery.receive_video(track, std::move(frame)); },
+      [&delivery](std::string_view track, const json& health)
+      { delivery.receive_video_health(track, health); },
       [&webrtc] { return webrtc.video_demand(); },
-      [&runtime, &webrtc, &epochs](std::uint32_t)
-      {
-        webrtc.restart_video_sessions();
-        runtime.state().set_video_health("program",
-                                         {{"available", false}, {"trackEpoch", ++epochs.program}});
-        runtime.state().set_video_health("preview",
-                                         {{"available", false}, {"trackEpoch", ++epochs.preview}});
-      });
-}
-
-void record_audio_monitor_status(EnduranceEventLog& endurance_log, const AudioMonitorStatus& status)
-{
-  endurance_log.record("audioMonitorIpc",
-                       "statusChanged",
-                       {{"supported", status.supported},
-                        {"configured", status.configured},
-                        {"available", status.available},
-                        {"reason", status.reason},
-                        {"ageMs", status.age_ms},
-                        {"producerDroppedFrames", status.dropped_frames},
-                        {"ipcSkippedFrames", status.ipc_skipped_frames},
-                        {"ipcSampleIndexGaps", status.ipc_sample_index_gaps}});
-}
-
-void advertise_or_report(AvahiServiceDiscovery& discovery, const GatewayConfig& config)
-{
-  try
-  {
-    discovery.advertise(dns_sd_service_record(config));
-  }
-  catch (const std::exception& error)
-  {
-    std::cerr << "DNS-SD advertisement unavailable: " << error.what() << '\n';
-  }
+      [&delivery](std::uint32_t generation) { delivery.receive_capture_generation(generation); });
 }
 
 class LinuxCompanionApplication final : public PlatformCompanionApplication
@@ -140,7 +92,8 @@ private:
                          ConfigStore& config_store,
                          GatewayConfig& config,
                          LinuxCredentialStore& credentials,
-                         EnduranceEventLog& endurance_log);
+                         EnduranceEventLog& endurance_log,
+                         ShutdownSignal& shutdown);
 };
 
 int LinuxCompanionApplication::run(int argc, char** argv)
@@ -150,6 +103,8 @@ int LinuxCompanionApplication::run(int argc, char** argv)
   std::unique_ptr<EnduranceEventLog> endurance_log;
   try
   {
+    // POSIX masks must precede every worker, including threads created by GLib/Secret Service.
+    ShutdownSignal shutdown;
     const auto command_line = parse_command_line(argc, argv);
     if (command_line.help)
     {
@@ -194,7 +149,8 @@ int LinuxCompanionApplication::run(int argc, char** argv)
                           {{"version", PROJECT_VERSION},
                            {"platform", "linux"},
                            {"providerIds", {"obs", "companion-teleprompter"}}});
-    const int status = run_gateway(command_line, config_store, config, credentials, *endurance_log);
+    const int status =
+        run_gateway(command_line, config_store, config, credentials, *endurance_log, shutdown);
     endurance_log->record("process", "stopped");
     endurance_log->stop();
     return status;
@@ -218,7 +174,8 @@ int LinuxCompanionApplication::run_gateway(const CommandLine& command_line,
                                            ConfigStore& config_store,
                                            GatewayConfig& config,
                                            LinuxCredentialStore& credentials,
-                                           EnduranceEventLog& endurance_log)
+                                           EnduranceEventLog& endurance_log,
+                                           ShutdownSignal& shutdown)
 {
   SignInStartup sign_in_startup;
   AuditStore audit(config.data_directory / "gateway.db", {}, &endurance_log);
@@ -266,21 +223,22 @@ int LinuxCompanionApplication::run_gateway(const CommandLine& command_line,
                          &audio_mixer_roster,
                          &scene_item_properties);
   WebRtcHub webrtc(runtime.state());
-  VideoTrackEpochs video_epochs;
-  CaptureManager capture = make_capture_manager(runtime, webrtc, video_epochs);
   LinuxAudioDiagnosticPlayer audio_diagnostics;
+  ObsMediaDelivery media_delivery(
+      runtime.state(),
+      webrtc,
+      [&audio_diagnostics](const AudioMonitorStatus& status)
+      { audio_diagnostics.set_monitor_status(status); },
+      &endurance_log);
+  CaptureManager capture = make_capture_manager(media_delivery, webrtc);
   LinuxAudioMonitor audio_monitor(
       [&audio_diagnostics, &webrtc](SharedAudioMonitorFrame frame)
       {
         audio_diagnostics.push(frame, AudioDiagnosticTap::pre_opus_ipc);
         webrtc.push_audio_monitor(std::move(frame));
       },
-      [&audio_diagnostics, &webrtc, &endurance_log](const AudioMonitorStatus& status)
-      {
-        audio_diagnostics.set_monitor_status(status);
-        webrtc.set_audio_monitor_status(status);
-        record_audio_monitor_status(endurance_log, status);
-      });
+      [&media_delivery](const AudioMonitorStatus& status)
+      { media_delivery.receive_audio_status(status); });
   apply_audio_mix_configuration(config, audio_monitor, runtime);
   webrtc.set_post_opus_diagnostic_handler(
       [&audio_diagnostics](SharedAudioMonitorFrame frame)
@@ -326,50 +284,77 @@ int LinuxCompanionApplication::run_gateway(const CommandLine& command_line,
                          hotkeys,
                          &endurance_log,
                          &scripts);
+  media_delivery.on_capabilities_changed([&http] { http.publish_capabilities("obs"); });
+  media_delivery.on_capture_generation_changed(
+      [&http](std::uint32_t generation) { http.reinitialize_media_sessions("obs", generation); });
+  webrtc.set_audio_monitor_status(audio_monitor.status());
+  audio_diagnostics.set_monitor_status(audio_monitor.status());
   audit.on_roles_changed([&http](const std::vector<DeviceRoleChange>& changes)
                          { http.apply_role_changes(changes); });
   // As on Windows, an OBS exit or connection loss never ends the companion process: the OBS
   // adapter reconnects on its own and the helper IPC re-attaches when OBS returns.
-  ShutdownSignal shutdown;
+  AvahiServiceDiscovery discovery;
+  ListenerGatewayController network(
+      {[](std::uint16_t port)
+       {
+         const bool available = listener_port_available(port);
+         return ListenerPortAvailability{
+             available,
+             0,
+             available ? ""
+                       : "HTTPS/WSS listener port " + std::to_string(port) + " is already in use"};
+       },
+       [&config](std::uint16_t port)
+       { return listener_specification(port, config.allow_non_private_interfaces); },
+       [&http] { return http.running(); },
+       [&discovery] { discovery.stop(); },
+       [&http] { http.stop(); },
+       [&http, &make_http_config](std::uint16_t port, const std::string& listeners)
+       {
+         auto settings = make_http_config();
+         settings.port = port;
+         settings.listening_ports = listeners;
+         http.configure(settings);
+       },
+       [&http] { http.start(); },
+       [&discovery, &config](std::uint16_t port)
+       {
+         auto advertised = config;
+         advertised.port = port;
+         discovery.advertise(dns_sd_service_record(advertised));
+       },
+       [](std::string_view error)
+       { std::cerr << "DNS-SD advertisement failed: " << error << '\n'; }},
+      listener_specification(config.port, config.allow_non_private_interfaces));
   adapter_gateways.start("companion-teleprompter");
   adapter_gateways.start("obs");
-  if (!listener_port_available(config.port))
-    throw std::runtime_error("HTTPS/WSS listener port " + std::to_string(config.port) +
-                             " is already in use");
-  http.start();
-  AvahiServiceDiscovery discovery;
-  advertise_or_report(discovery, config);
+  try
+  {
+    network.start(config.port);
+  }
+  catch (const std::exception& error)
+  {
+    std::cerr << "Companion network recovery required: " << error.what() << '\n';
+  }
 
   if (command_line.pairing_role)
   {
     const auto payload = pairing.open(pairing_url(config), *command_line.pairing_role);
     std::cout << payload.dump() << '\n';
   }
-  std::cout << "PaneLive Companion '" << config.name << "' is listening on port " << config.port
+  std::cout << "PaneLive Companion '" << config.name << "' "
+            << (http.running() ? "is listening on port " + std::to_string(config.port)
+                               : "is running in network recovery mode")
             << ".\n";
 
-  const LinuxCompanionServices services{config,
-                                        config_store,
-                                        credentials,
-                                        sign_in_startup,
-                                        audit,
-                                        pairing,
-                                        obs,
-                                        runtime,
-                                        teleprompter_runtime,
-                                        scripts,
-                                        webrtc,
-                                        capture,
-                                        audio_monitor,
-                                        audio_diagnostics,
-                                        adapter_gateways,
-                                        http,
-                                        discovery,
-                                        endurance_log,
-                                        shutdown,
-                                        make_http_config};
+  const LinuxCompanionServices services{
+      config,  config_store, credentials,   sign_in_startup,      audit,
+      pairing, obs,          runtime,       teleprompter_runtime, scripts,
+      webrtc,  capture,      audio_monitor, audio_diagnostics,    adapter_gateways,
+      http,    network,      discovery,     endurance_log,        shutdown};
   if (graphical_session_available())
   {
+    auto approvals = linux_client_approval_callbacks(services);
     LinuxManagementUi management_ui(
         config.name,
         PROJECT_VERSION,
@@ -379,15 +364,26 @@ int LinuxCompanionApplication::run_gateway(const CommandLine& command_line,
         config.management_interface_mode,
         [&config, &config_store](ManagementInterfaceMode mode)
         {
-          config.management_interface_mode = mode;
-          config_store.save(config);
+          auto updated = config;
+          updated.management_interface_mode = mode;
+          config_store.save(updated);
+          config = std::move(updated);
         },
         make_management_callbacks(services),
-        shutdown);
-    connect_client_approval_requests(services, management_ui);
+        shutdown,
+        approvals.decide_role,
+        approvals.decide_global_setting);
+    pairing.on_closed(management_ui.pairing_closed_handler());
+    auto requesters = management_ui.approval_requesters();
+    http.on_client_removed(requesters.cancel_device);
+    approvals = linux_client_approval_callbacks(services, std::move(requesters));
+    http.on_role_change_requested(approvals.request_role);
+    http.on_global_setting_change_requested(approvals.request_global_setting);
     static_cast<void>(management_ui.run());
     http.on_role_change_requested({});
+    http.on_client_removed({});
     http.on_global_setting_change_requested({});
+    pairing.on_closed({});
   }
   else
   {

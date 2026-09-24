@@ -1,0 +1,9 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: PaneLive Companion OBS Plugin
+Source: https://github.com/Clownfish-Web/panelive-companion
+
+Files: *
+Copyright: 2026 Clownfish Web, Artur Cichosz, and contributors
+License: GPL-2+
+ On Debian systems, the complete GNU General Public License, Version 2 is
+ available in /usr/share/common-licenses/GPL-2.

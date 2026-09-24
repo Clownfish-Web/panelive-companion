@@ -1,3 +1,6 @@
 # Portable dependencies are pinned and linked statically by the repository vcpkg manifest.
-panelive-companion: embedded-library srtp [usr/bin/panelive-companion]
-panelive-companion: embedded-library zlib [usr/bin/panelive-companion]
+panelive-companion: embedded-library srtp *usr/bin/panelive-companion*
+panelive-companion: embedded-library zlib *usr/bin/panelive-companion*
+# Debian and Ubuntu ship different libjpeg SONAMEs. The baseline distro archive is linked
+# statically so the release does not require installing a foreign distribution package.
+panelive-companion: embedded-library libjpeg *usr/bin/panelive-companion*

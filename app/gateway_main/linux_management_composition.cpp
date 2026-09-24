@@ -3,6 +3,7 @@
 
 #include "linux_gateway_advertisement.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <studio_remote/ui/management_adapter_rows.hpp>
@@ -81,7 +82,13 @@ void add_client_callbacks(ManagementUiCallbacks& callbacks, const LinuxCompanion
         unix_seconds() + static_cast<std::uint64_t>(default_pairing_lifetime.count() * 60)};
   };
   callbacks.set_operator = [services](std::string_view id)
-  { services.audit.set_role(id, Role::operator_); };
+  {
+    services.audit.set_role(id,
+                            Role::operator_,
+                            services.config.enforce_single_operator_client_mode
+                                ? OperatorAssignmentPolicy::transfer_existing_operators
+                                : OperatorAssignmentPolicy::allow_multiple_operators);
+  };
   callbacks.set_viewer = [services](std::string_view id)
   { services.audit.set_role(id, Role::viewer); };
   callbacks.identify_client = [services](std::string_view id, ClientIdentificationOptions options)
@@ -90,8 +97,8 @@ void add_client_callbacks(ManagementUiCallbacks& callbacks, const LinuxCompanion
   { services.http.identify_all_clients(options); };
   callbacks.forget_client = [services](std::string_view id)
   {
-    if (services.audit.forget_device(id))
-      services.http.disconnect_device(id);
+    services.audit.forget_device(id);
+    services.http.disconnect_device(id);
   };
 }
 
@@ -117,11 +124,13 @@ void add_obs_connection_callbacks(ManagementUiCallbacks& callbacks,
       services.credentials.put("obs-password", *request.password);
       password = *request.password;
     }
-    config.obs_host = request.host;
-    config.obs_port = request.port;
-    config.obs_password = password;
-    config.obs_connection_configured = true;
-    services.config_store.save(config);
+    auto updated = config;
+    updated.obs_host = request.host;
+    updated.obs_port = request.port;
+    updated.obs_password = password;
+    updated.obs_connection_configured = true;
+    services.config_store.save(updated);
+    config = std::move(updated);
     services.obs.reconfigure(config.obs_host, config.obs_port, password);
   };
 }
@@ -149,55 +158,35 @@ void add_adapter_callbacks(ManagementUiCallbacks& callbacks, const LinuxCompanio
   { services.adapter_gateways.restart(id); };
 }
 
-// Rebinds the listener on the new port and rolls back to the previous port when that fails, so a
-// port collision never leaves the companion without a listener.
-void rebind_listener(const LinuxCompanionServices& services,
-                     std::uint16_t previous_port,
-                     const std::string& previous_address)
-{
-  auto& config = services.config;
-  services.http.stop();
-  try
-  {
-    services.http.configure(services.make_http_config());
-    services.http.start();
-  }
-  catch (...)
-  {
-    config.port = previous_port;
-    config.pairing_address = previous_address;
-    services.http.configure(services.make_http_config());
-    services.http.start();
-    throw;
-  }
-}
-
 void add_network_callbacks(ManagementUiCallbacks& callbacks, const LinuxCompanionServices& services)
 {
   callbacks.network_settings = [services]
   {
     const auto& config = services.config;
-    return ManagementNetworkSettings{
-        config.pairing_address,
-        available_lan_ipv4_addresses(),
-        config.port,
-        services.http.running(),
-        config.pairing_address.empty() ? "No private LAN address is available for pairing" : ""};
+    const auto status = services.network.status();
+    return ManagementNetworkSettings{config.pairing_address,
+                                     available_lan_ipv4_addresses(),
+                                     config.port,
+                                     status.listening,
+                                     status.warning};
   };
   callbacks.apply_network_settings = [services](const ManagementNetworkSettingsRequest& request)
   {
     auto& config = services.config;
-    const auto previous_port = config.port;
-    const auto previous_address = config.pairing_address;
-    if (request.port != previous_port && !listener_port_available(request.port))
-      throw std::runtime_error("HTTPS/WSS listener port " + std::to_string(request.port) +
-                               " is already in use");
-    config.port = request.port;
-    config.pairing_address = request.address;
-    if (request.port != previous_port)
-      rebind_listener(services, previous_port, previous_address);
-    services.config_store.save(config);
-    services.discovery.advertise(dns_sd_service_record(config));
+    const auto addresses = available_lan_ipv4_addresses();
+    if (std::ranges::find(addresses, request.address) == addresses.end())
+      throw std::invalid_argument("The selected pairing address is no longer active on this PC");
+    if (request.port == config.port && request.address == config.pairing_address &&
+        services.network.running_on(request.port))
+      return;
+    auto updated = config;
+    updated.port = request.port;
+    updated.pairing_address = request.address;
+    services.config_store.save(updated);
+    const bool port_changed = config.port != request.port;
+    config = std::move(updated);
+    if (port_changed || !services.network.running_on(config.port))
+      services.network.start(config.port);
   };
 }
 
@@ -243,16 +232,20 @@ void add_settings_callbacks(ManagementUiCallbacks& callbacks,
   };
   callbacks.set_single_operator_mode = [services](bool enabled)
   {
-    services.config.enforce_single_operator_client_mode = enabled;
     if (enabled)
       services.audit.enforce_single_operator();
-    services.config_store.save(services.config);
+    auto updated = services.config;
+    updated.enforce_single_operator_client_mode = enabled;
+    services.config_store.save(updated);
+    services.config = std::move(updated);
   };
   callbacks.set_sign_in_startup = [services](bool enabled)
   {
     services.sign_in_startup.set_enabled(enabled);
-    services.config.start_at_login = enabled;
-    services.config_store.save(services.config);
+    auto updated = services.config;
+    updated.start_at_login = enabled;
+    services.config_store.save(updated);
+    services.config = std::move(updated);
   };
   callbacks.endurance_status = [services]
   { return management_endurance_status(services.endurance_log.status()); };
@@ -273,10 +266,12 @@ void add_settings_callbacks(ManagementUiCallbacks& callbacks,
   callbacks.apply_audio_mix = [services](const ManagementAudioMixSettingsRequest& request)
   {
     auto& config = services.config;
-    config.automatic_audio_headroom = request.automatic_headroom;
-    config.audio_headroom_per_additional_source_db = request.headroom_per_additional_source_db;
-    config.audio_source_audition_bus = request.audio_source_audition_bus;
-    services.config_store.save(config);
+    auto updated = config;
+    updated.automatic_audio_headroom = request.automatic_headroom;
+    updated.audio_headroom_per_additional_source_db = request.headroom_per_additional_source_db;
+    updated.audio_source_audition_bus = request.audio_source_audition_bus;
+    services.config_store.save(updated);
+    config = std::move(updated);
     apply_audio_mix_configuration(config, services.audio_monitor, services.runtime);
   };
   callbacks.shutdown = [services] { services.shutdown.request_stop(); };

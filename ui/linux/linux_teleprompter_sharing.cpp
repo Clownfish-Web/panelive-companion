@@ -39,7 +39,7 @@ void bind_selection(gpointer source, const char* signal, GCallback callback, Sel
       callback,
       owned.release(),
       [](gpointer data, GClosure*) { delete static_cast<SelectionAction*>(data); },
-      G_CONNECT_DEFAULT);
+      static_cast<GConnectFlags>(0));
 }
 std::string player_label(const ManagementClientRow& client)
 {

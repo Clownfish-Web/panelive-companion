@@ -1,5 +1,6 @@
 #pragma once
 
+#include <studio_remote/ui/management_approval_dispatcher.hpp>
 #include <studio_remote/ui/management_controller.hpp>
 
 #include <functional>
@@ -24,13 +25,14 @@ public:
                     ManagementInterfaceMode interface_mode,
                     std::function<void(ManagementInterfaceMode)> interface_mode_changed,
                     ManagementUiCallbacks callbacks,
-                    ShutdownSignal& shutdown);
+                    ShutdownSignal& shutdown,
+                    std::function<void(const RoleChangeRequest&, bool)> decide_role,
+                    std::function<void(const GlobalSettingChangeRequest&, bool)> decide_global);
   ~LinuxManagementUi();
   int run();
-  bool request_role_change(ManagementRoleChangeRequest request,
-                           ManagementApprovalDecision decision);
-  bool request_global_setting_change(ManagementGlobalSettingChangeRequest request,
-                                     ManagementApprovalDecision decision);
+  ManagementApprovalRequesters approval_requesters() const;
+  /// Safe from runtime threads and after UI destruction; clearing is delivered on the GTK thread.
+  std::function<void()> pairing_closed_handler() const;
 
 private:
   class Implementation;

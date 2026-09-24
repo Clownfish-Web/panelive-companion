@@ -18,11 +18,6 @@ struct ToggleAction
   std::function<void(bool)> action;
 };
 
-struct ApprovalAction
-{
-  std::function<void(bool)> decision;
-};
-
 void on_clicked(GtkButton*, gpointer data)
 {
   // Redraw may destroy the source button and its closure while this action runs.
@@ -41,10 +36,25 @@ void on_clicked(GtkButton*, gpointer data)
   }
 }
 
-gboolean on_state_set(GtkSwitch*, gboolean state, gpointer data)
+gboolean on_state_set(GtkSwitch* widget, gboolean state, gpointer data)
 {
-  static_cast<ToggleAction*>(data)->action(state != FALSE);
-  return FALSE;
+  try
+  {
+    const auto action = static_cast<ToggleAction*>(data)->action;
+    action(state != FALSE);
+  }
+  catch (const std::exception& error)
+  {
+    g_warning("Management toggle failed: %s", error.what());
+  }
+  catch (...)
+  {
+    g_warning("Management toggle failed");
+  }
+  // A confirmation or failed save may have restored the observed position during the
+  // callback. Do not let GTK's default handler reapply the original requested value.
+  gtk_switch_set_state(widget, gtk_switch_get_active(widget));
+  return TRUE;
 }
 
 void delete_click_action(gpointer data, GClosure*)
@@ -57,11 +67,6 @@ void delete_toggle_action(gpointer data, GClosure*)
   delete static_cast<ToggleAction*>(data);
 }
 
-void delete_approval_action(gpointer data, GClosure*)
-{
-  delete static_cast<ApprovalAction*>(data);
-}
-
 void on_confirmation_response(GtkDialog* dialog, int response, gpointer data)
 {
   const auto action = *static_cast<ClickAction*>(data);
@@ -72,11 +77,6 @@ void on_confirmation_response(GtkDialog* dialog, int response, gpointer data)
   gtk_window_destroy(GTK_WINDOW(dialog));
 }
 
-void on_approval_response(GtkDialog* dialog, int response, gpointer data)
-{
-  static_cast<ApprovalAction*>(data)->decision(response == GTK_RESPONSE_ACCEPT);
-  gtk_window_destroy(GTK_WINDOW(dialog));
-}
 } // namespace
 
 void append(GtkWidget* box, GtkWidget* child)
@@ -174,7 +174,7 @@ GtkWidget* button(std::string_view label, std::function<void()> action, bool ena
                         G_CALLBACK(on_clicked),
                         new ClickAction{std::move(action), {}},
                         delete_click_action,
-                        G_CONNECT_DEFAULT);
+                        static_cast<GConnectFlags>(0));
   return result;
 }
 
@@ -187,7 +187,7 @@ GtkWidget* toggle(bool active, std::function<void(bool)> action)
                         G_CALLBACK(on_state_set),
                         new ToggleAction{std::move(action)},
                         delete_toggle_action,
-                        G_CONNECT_DEFAULT);
+                        static_cast<GConnectFlags>(0));
   return result;
 }
 
@@ -197,6 +197,41 @@ GtkWidget* badge(std::string_view value, std::string_view tone)
   gtk_widget_add_css_class(label, "pill");
   gtk_widget_add_css_class(label, std::string(tone).c_str());
   return label;
+}
+
+GtkWidget* named(GtkWidget* widget, std::string_view name)
+{
+  gtk_widget_set_name(widget, std::string(name).c_str());
+  return widget;
+}
+
+GtkWidget* find_widget(GtkWidget* parent, std::string_view name)
+{
+  if (name == gtk_widget_get_name(parent))
+    return parent;
+  for (auto* child = gtk_widget_get_first_child(parent); child;
+       child = gtk_widget_get_next_sibling(child))
+    if (auto* found = find_widget(child, name))
+      return found;
+  return nullptr;
+}
+
+void refresh_badge(GtkWidget* widget, std::string_view value, std::string_view tone)
+{
+  gtk_label_set_text(GTK_LABEL(widget), std::string(value).c_str());
+  for (const auto* previous : {"neutral", "healthy", "warning", "error"})
+    gtk_widget_remove_css_class(widget, previous);
+  gtk_widget_add_css_class(widget, std::string(tone).c_str());
+}
+
+void refresh_toggle(GtkWidget* widget, bool active)
+{
+  // Observation must not dispatch a save or reopen a confirmation dialog.
+  const auto signal = g_signal_lookup("state-set", GTK_TYPE_SWITCH);
+  g_signal_handlers_block_matched(widget, G_SIGNAL_MATCH_ID, signal, 0, nullptr, nullptr, nullptr);
+  gtk_switch_set_active(GTK_SWITCH(widget), active);
+  g_signal_handlers_unblock_matched(
+      widget, G_SIGNAL_MATCH_ID, signal, 0, nullptr, nullptr, nullptr);
 }
 
 std::string text(GtkWidget* control)
@@ -230,31 +265,9 @@ void confirm(GtkWindow* parent,
                         G_CALLBACK(on_confirmation_response),
                         new ClickAction{std::move(confirmed), std::move(cancelled)},
                         delete_click_action,
-                        G_CONNECT_DEFAULT);
+                        static_cast<GConnectFlags>(0));
   gtk_window_present(GTK_WINDOW(dialog));
 }
 
-void approve(GtkWindow* parent,
-             std::string_view title,
-             std::string_view message,
-             std::function<void(bool)> decision)
-{
-  auto* dialog = gtk_message_dialog_new(parent,
-                                        GTK_DIALOG_MODAL,
-                                        GTK_MESSAGE_QUESTION,
-                                        GTK_BUTTONS_NONE,
-                                        "%s",
-                                        std::string(message).c_str());
-  gtk_window_set_title(GTK_WINDOW(dialog), std::string(title).c_str());
-  gtk_dialog_add_button(GTK_DIALOG(dialog), "Deny", GTK_RESPONSE_CANCEL);
-  gtk_dialog_add_button(GTK_DIALOG(dialog), "Approve", GTK_RESPONSE_ACCEPT);
-  g_signal_connect_data(dialog,
-                        "response",
-                        G_CALLBACK(on_approval_response),
-                        new ApprovalAction{std::move(decision)},
-                        delete_approval_action,
-                        G_CONNECT_DEFAULT);
-  gtk_window_present(GTK_WINDOW(dialog));
-}
 G_GNUC_END_IGNORE_DEPRECATIONS
 } // namespace studio_remote::linux::ui

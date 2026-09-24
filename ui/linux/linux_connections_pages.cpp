@@ -2,6 +2,8 @@
 
 #include "linux_ui_helpers.hpp"
 
+#include <algorithm>
+
 namespace studio_remote::linux
 {
 namespace
@@ -40,9 +42,7 @@ GtkWidget* make_linux_adapters_page(LinuxPageContext context)
   auto* obs_title = section_title("OBS Studio");
   gtk_widget_set_hexpand(obs_title, TRUE);
   append(obs_heading, obs_title);
-  append(obs_heading,
-         badge(state.obs_connection.status.empty() ? "Not configured" : state.obs_connection.status,
-               state.obs_connection.connected ? "healthy" : "warning"));
+  append(obs_heading, named(badge({}, "warning"), "obs-status"));
   append(obs, obs_heading);
   auto* obs_host = entry(state.obs_connection.host);
   auto* obs_port = spin(state.obs_connection.port, 1, 65'535);
@@ -67,7 +67,9 @@ GtkWidget* make_linux_adapters_page(LinuxPageContext context)
   gtk_widget_set_name(apply_obs, "apply-obs");
   style_apply_button(apply_obs);
   append(obs, apply_obs);
-  append(result, card(obs));
+  append(result, named(card(obs), "obs-card"));
+
+  refresh_linux_adapters_page(result, context);
 
   return result;
 }
@@ -83,23 +85,15 @@ GtkWidget* make_linux_companion_settings_page(LinuxPageContext context)
   auto* title = section_title("Companion network");
   gtk_widget_set_hexpand(title, TRUE);
   append(heading, title);
-  append(heading,
-         badge(network.listening ? "Listening" : "Unavailable",
-               network.listening ? "healthy" : "error"));
+  append(heading, named(badge({}, "neutral"), "network-status"));
   append(contents, heading);
-  if (!network.warning.empty())
-    append(contents, badge(network.warning, "warning"));
+  append(contents, named(badge({}, "warning"), "network-warning"));
 
-  auto* addresses = gtk_string_list_new(nullptr);
-  guint selected = GTK_INVALID_LIST_POSITION;
-  for (std::size_t index = 0; index < network.available_addresses.size(); ++index)
-  {
-    gtk_string_list_append(addresses, network.available_addresses[index].c_str());
-    if (network.available_addresses[index] == network.address)
-      selected = static_cast<guint>(index);
-  }
-  auto* address = gtk_drop_down_new(G_LIST_MODEL(addresses), nullptr);
-  gtk_drop_down_set_selected(GTK_DROP_DOWN(address), selected);
+  auto* address = gtk_drop_down_new(nullptr, nullptr);
+  std::vector<std::pair<std::string, std::string>> choices;
+  for (const auto& candidate : network.available_addresses)
+    choices.emplace_back(candidate, candidate);
+  refresh_choices(address, std::move(choices), network.address);
   auto* port_field = spin(network.port, 1, 65'535);
   gtk_widget_set_name(address, "network-address");
   gtk_widget_set_name(port_field, "network-port");
@@ -113,10 +107,7 @@ GtkWidget* make_linux_companion_settings_page(LinuxPageContext context)
                        [context, address, port_field]
                        {
                          ManagementNetworkSettingsRequest request;
-                         if (auto* item = gtk_drop_down_get_selected_item(GTK_DROP_DOWN(address)))
-                         {
-                           request.address = gtk_string_object_get_string(GTK_STRING_OBJECT(item));
-                         }
+                         request.address = selected_choice(address);
                          request.port = port(port_field);
                          context.controller.apply_network_settings(std::move(request));
                          context.redraw();
@@ -125,6 +116,35 @@ GtkWidget* make_linux_companion_settings_page(LinuxPageContext context)
   style_apply_button(apply);
   append(contents, apply);
   append(result, card(contents));
+  refresh_linux_companion_settings_page(result, context);
   return result;
+}
+
+void refresh_linux_adapters_page(GtkWidget* page, LinuxPageContext context)
+{
+  const auto& state = context.controller.state();
+  gtk_widget_set_visible(ui::find_widget(page, "obs-card"),
+                         std::ranges::any_of(state.adapters,
+                                             [](const auto& adapter)
+                                             { return adapter.provider_id == "obs"; }));
+  ui::refresh_badge(ui::find_widget(page, "obs-status"),
+                    state.obs_connection.status.empty() ? "Not configured"
+                                                        : state.obs_connection.status,
+                    state.obs_connection.connected ? "healthy" : "warning");
+}
+
+void refresh_linux_companion_settings_page(GtkWidget* page, LinuxPageContext context)
+{
+  const auto& network = context.controller.state().network_settings;
+  ui::refresh_badge(ui::find_widget(page, "network-status"),
+                    network.listening ? "Listening" : "Unavailable",
+                    network.listening ? "healthy" : "error");
+  auto* warning = ui::find_widget(page, "network-warning");
+  gtk_label_set_text(GTK_LABEL(warning), network.warning.c_str());
+  gtk_widget_set_visible(warning, !network.warning.empty());
+  std::vector<std::pair<std::string, std::string>> choices;
+  for (const auto& candidate : network.available_addresses)
+    choices.emplace_back(candidate, candidate);
+  ui::refresh_choices(ui::find_widget(page, "network-address"), std::move(choices));
 }
 } // namespace studio_remote::linux

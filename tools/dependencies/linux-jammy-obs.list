@@ -1,0 +1,1 @@
+deb [arch=amd64 signed-by=/usr/share/keyrings/obs-ppa.asc] https://ppa.launchpadcontent.net/obsproject/obs-studio/ubuntu jammy main

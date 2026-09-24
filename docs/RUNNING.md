@@ -101,18 +101,33 @@ notes must state their signing/notarization status.
 
 ## Linux
 
-Install the locally built Debian package, replacing the filename with your artifact:
+Install the Companion package, replacing the filename with your artifact:
 
 ```sh
 sudo apt install ./out/package/linux/panelive-companion_0.1.0~beta.1_amd64.deb
 panelive-companion --open-management
 ```
 
-Close OBS before installing or upgrading and restart it afterward. The package installs
-the helper under `/usr/lib/x86_64-linux-gnu/obs-plugins/`, its data under
-`/usr/share/obs/obs-plugins/`, and an application launcher. Use a graphical user session
-with an unlocked Secret Service keyring and Avahi available for discovery. The Companion
-uses the user's XDG state directory. Run it as your normal user, not through `sudo`.
+For OBS monitoring, also install the separate helper package. It requires native
+OBS 30 or newer with Qt 6; stock OBS on Ubuntu 22.04 and Debian 12 is too old.
+Flatpak/Snap OBS is not supported by this helper package. Close OBS before installing
+or upgrading the helper and restart it afterward:
+
+```sh
+sudo apt install ./out/package/linux/panelive-companion-obs-plugin_0.1.0~beta.1_amd64.deb
+```
+
+The helper installs under `/usr/lib/x86_64-linux-gnu/obs-plugins/`, with data under
+`/usr/share/obs/obs-plugins/`. The Companion package supplies the application launcher
+and supports standalone teleprompter use without OBS. Use a graphical user session
+with session D-Bus, an unlocked Secret Service keyring and Avahi available for discovery.
+The Companion uses the user's XDG state directory. Run it as your normal user,
+not through `sudo`.
+
+Linux management preserves pending form edits and device selections during status
+refreshes. The pairing QR can be enlarged temporarily; close it with the close button
+or Escape. If the configured listener port is busy, Companion stays open in network
+recovery mode so you can correct its network settings.
 
 ## Configure OBS and pair
 

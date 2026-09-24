@@ -10,6 +10,8 @@ class ShutdownSignal
 public:
   ShutdownSignal();
   ~ShutdownSignal();
+  ShutdownSignal(const ShutdownSignal&) = delete;
+  ShutdownSignal& operator=(const ShutdownSignal&) = delete;
   bool wait_for(std::chrono::milliseconds timeout);
   void request_stop();
 

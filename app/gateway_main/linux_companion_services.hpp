@@ -2,6 +2,7 @@
 
 #include "adapter_gateway_controller.hpp"
 #include "http_server.hpp"
+#include "listener_gateway_controller.hpp"
 
 #include "../../platform/linux/capture/linux_audio_diagnostic_player.hpp"
 #include "../../platform/linux/capture/linux_audio_monitor.hpp"
@@ -42,9 +43,9 @@ struct LinuxCompanionServices
   LinuxAudioDiagnosticPlayer& audio_diagnostics;
   AdapterGatewayController& adapter_gateways;
   GatewayHttpServer& http;
+  ListenerGatewayController& network;
   AvahiServiceDiscovery& discovery;
   EnduranceEventLog& endurance_log;
   ShutdownSignal& shutdown;
-  std::function<HttpConfig()> make_http_config;
 };
 } // namespace studio_remote::linux

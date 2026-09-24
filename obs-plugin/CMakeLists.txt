@@ -47,6 +47,9 @@ elseif(APPLE)
   include(cmake/macos_dependencies.cmake)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(libobs CONFIG REQUIRED)
+  if(libobs_VERSION VERSION_LESS 30.0)
+    message(FATAL_ERROR "The Linux OBS helper release requires the OBS 30 shared-library ABI")
+  endif()
   find_package(obs-frontend-api CONFIG REQUIRED)
   find_package(Qt6 6.2 REQUIRED COMPONENTS Core Widgets)
 else()
@@ -144,6 +147,7 @@ else()
   add_library(panelive-companion-obs-plugin MODULE
     ${OBS_PLUGIN_COMMON_SOURCES}
     src/plugin_main_linux.cpp
+    src/obs_frontend_symbols_linux.cpp
     src/shared_frame_publisher.hpp
     src/shared_frame_publisher_linux.cpp)
 endif()
@@ -181,6 +185,7 @@ set_target_properties(panelive-companion-obs-plugin PROPERTIES
   PREFIX ""
   OUTPUT_NAME "${OBS_PLUGIN_PACKAGE_ID}")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries(panelive-companion-obs-plugin PRIVATE ${CMAKE_DL_LIBS})
   target_link_options(panelive-companion-obs-plugin PRIVATE
     $<$<CONFIG:Release>:-Wl,--strip-all>)
 endif()
@@ -201,7 +206,8 @@ else()
     "${CMAKE_INSTALL_DATADIR}/obs/obs-plugins/${OBS_PLUGIN_PACKAGE_ID}")
 endif()
 install(TARGETS panelive-companion-obs-plugin
-  LIBRARY DESTINATION "${OBS_PLUGIN_BINARY_DESTINATION}"
-  BUNDLE DESTINATION "${OBS_PLUGIN_BINARY_DESTINATION}")
-install(FILES LICENSE DESTINATION "${OBS_PLUGIN_DATA_DESTINATION}")
-install(FILES data/locale/en-US.ini DESTINATION "${OBS_PLUGIN_DATA_DESTINATION}/locale")
+  LIBRARY DESTINATION "${OBS_PLUGIN_BINARY_DESTINATION}" COMPONENT OBSPlugin
+  BUNDLE DESTINATION "${OBS_PLUGIN_BINARY_DESTINATION}" COMPONENT OBSPlugin)
+install(FILES LICENSE DESTINATION "${OBS_PLUGIN_DATA_DESTINATION}" COMPONENT OBSPlugin)
+install(FILES data/locale/en-US.ini DESTINATION "${OBS_PLUGIN_DATA_DESTINATION}/locale"
+  COMPONENT OBSPlugin)

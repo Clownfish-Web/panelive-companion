@@ -6,7 +6,6 @@
 #include "../../platform/linux/platform_services/linux_process.hpp"
 
 #include <adwaita.h>
-#include <atomic>
 #include <chrono>
 #include <gtk/gtk.h>
 #include <mutex>
@@ -22,6 +21,7 @@ namespace studio_remote::linux
 namespace
 {
 constexpr char application_id[] = "com.clownfishweb.PaneLiveCompanion";
+constexpr auto application_flags = static_cast<GApplicationFlags>(0);
 
 constexpr char stylesheet[] = R"css(
 .navigation-sidebar { background: alpha(@window_fg_color, 0.025); padding: 20px 12px 12px; }
@@ -29,6 +29,8 @@ constexpr char stylesheet[] = R"css(
 .navigation-title { font-size: 20px; font-weight: 700; }
 .navigation-sidebar button.selected { background: alpha(@window_fg_color, 0.12); }
 .card { border-radius: 8px; }
+.pairing-preview-backdrop { background: rgba(0, 0, 0, 0.65); }
+.pairing-preview-panel { background: @window_bg_color; border-radius: 8px; padding: 6px; }
 .attached-script { border-left: 2px solid #57d68d; background: alpha(#57d68d, 0.08); }
 .attached-script-icon { color: #57d68d; }
 .unattached-script-info { opacity: 0.72; }
@@ -65,7 +67,9 @@ public:
                  ManagementInterfaceMode interface_mode,
                  std::function<void(ManagementInterfaceMode)> interface_mode_changed,
                  ManagementUiCallbacks callbacks,
-                 ShutdownSignal& shutdown)
+                 ShutdownSignal& shutdown,
+                 std::function<void(const RoleChangeRequest&, bool)> decide_role,
+                 std::function<void(const GlobalSettingChangeRequest&, bool)> decide_global)
       : companion_name_(std::move(companion_name)), version_(std::move(version)),
         initial_page_(initial_management_page(
             interface_mode, obs_connection_configured, network_recovery_required)),
@@ -74,15 +78,72 @@ public:
         callbacks_(std::move(callbacks)), shutdown_(shutdown)
   {
     linux_management_resources_register_resource();
-    application_ = adw_application_new(application_id, G_APPLICATION_DEFAULT_FLAGS);
+    application_ = adw_application_new(application_id, application_flags);
     g_signal_connect(application_, "activate", G_CALLBACK(activate), this);
+    approvals_ = std::make_unique<ManagementApprovalDispatcher>(ManagementApprovalDispatchActions{
+        [this](auto action) { return dispatch(std::move(action)); },
+        [](auto action)
+        {
+          action();
+          return true;
+        },
+        [this](ManagementRoleChangeRequest request, ManagementApprovalDecision decision)
+        {
+          window_->request_role_change(std::move(request), std::move(decision));
+          return true;
+        },
+        [this](ManagementGlobalSettingChangeRequest request, ManagementApprovalDecision decision)
+        {
+          window_->request_global_setting_change(std::move(request), std::move(decision));
+          return true;
+        },
+        std::move(decide_role),
+        std::move(decide_global),
+        [this](std::string_view error) noexcept
+        {
+          try
+          {
+            if (!dispatch(
+                    [this, message = std::string(error)]
+                    {
+                      report_management_approval_error(*controller_, message);
+                      window_->redraw();
+                    }))
+              g_warning("Could not report a client approval failure");
+          }
+          catch (...)
+          {
+            g_warning("Could not report a client approval failure");
+          }
+        },
+        [this](std::string_view device, std::string_view request)
+        { window_->cancel_role_change(device, request); },
+        [this](std::string_view device, std::string_view request)
+        { window_->cancel_global_setting_change(device, request); }});
+    pairing_close_->hide = [this]
+    {
+      dispatch(
+          [this]
+          {
+            if (window_)
+              window_->clear_pairing();
+          });
+    };
   }
 
   ~Implementation()
   {
-    accepting_requests_ = false;
+    {
+      std::lock_guard lock(pairing_close_->mutex);
+      pairing_close_->hide = {};
+    }
+    approvals_->close();
+    stop_dispatch();
     if (refresh_source_ != 0)
       g_source_remove(refresh_source_);
+    status_item_.reset();
+    if (window_ && window_->window())
+      window_->close();
     window_.reset();
     controller_.reset();
     g_clear_object(&application_);
@@ -96,88 +157,78 @@ public:
     return g_application_run(G_APPLICATION(application_), 1, arguments);
   }
 
-  bool request_role_change(ManagementRoleChangeRequest request, ManagementApprovalDecision decision)
+  ManagementApprovalRequesters approval_requesters() const
   {
-    const auto key = std::pair{request.device_id, request.request_id};
-    {
-      std::lock_guard lock(request_mutex_);
-      if (!accepting_requests_)
-        return false;
-      if (!pending_role_requests_.insert(key).second)
-        return true;
-    }
-    dispatch(
-        [this, request = std::move(request), decision = std::move(decision), key]() mutable
-        {
-          window_->request_role_change(
-              std::move(request),
-              [this, decision = std::move(decision), key](bool approved) mutable
-              {
-                complete_approval(decision, approved, "Could not complete the client role request");
-                std::lock_guard lock(request_mutex_);
-                pending_role_requests_.erase(key);
-              });
-        });
-    return true;
+    return approvals_->requesters();
   }
 
-  bool request_global_setting_change(ManagementGlobalSettingChangeRequest request,
-                                     ManagementApprovalDecision decision)
+  std::function<void()> pairing_closed_handler() const
   {
-    const auto key = std::pair{request.device_id, request.request_id};
+    return [target = pairing_close_]
     {
-      std::lock_guard lock(request_mutex_);
-      if (!accepting_requests_)
-        return false;
-      if (!pending_global_requests_.insert(key).second)
-        return true;
-    }
-    dispatch(
-        [this, request = std::move(request), decision = std::move(decision), key]() mutable
-        {
-          window_->request_global_setting_change(
-              std::move(request),
-              [this, decision = std::move(decision), key](bool approved) mutable
-              {
-                complete_approval(
-                    decision, approved, "Could not complete the global setting request");
-                std::lock_guard lock(request_mutex_);
-                pending_global_requests_.erase(key);
-              });
-        });
-    return true;
+      try
+      {
+        std::lock_guard lock(target->mutex);
+        if (target->hide)
+          target->hide();
+      }
+      catch (...)
+      {
+        g_warning("Could not close pairing presentation");
+      }
+    };
   }
 
 private:
-  static gboolean run_dispatched(gpointer data)
+  struct DispatchedTask
   {
-    std::unique_ptr<std::function<void()>> action(static_cast<std::function<void()>*>(data));
-    (*action)();
-    return G_SOURCE_REMOVE;
-  }
+    Implementation* owner;
+    std::function<void()> action;
+  };
 
-  void dispatch(std::function<void()> action)
+  static gboolean run_dispatched(gpointer data) noexcept
   {
-    auto* source = g_idle_source_new();
-    g_source_set_callback(
-        source, run_dispatched, new std::function<void()>(std::move(action)), nullptr);
-    g_source_attach(source, g_main_context_default());
-    g_source_unref(source);
-  }
-
-  void complete_approval(const ManagementApprovalDecision& decision,
-                         bool approved,
-                         std::string_view failure)
-  {
+    auto& task = *static_cast<DispatchedTask*>(data);
+    {
+      std::lock_guard lock(task.owner->dispatch_mutex_);
+      task.owner->dispatch_sources_.erase(g_source_get_id(g_main_current_source()));
+    }
     try
     {
-      decision(approved);
+      task.action();
     }
     catch (...)
     {
-      controller_->report_error(std::string(failure));
-      window_->redraw();
+      g_warning("Management dispatch failed");
     }
+    return G_SOURCE_REMOVE;
+  }
+
+  bool dispatch(std::function<void()> action)
+  {
+    std::lock_guard lock(dispatch_mutex_);
+    if (dispatch_stopped_)
+      return false;
+    auto* source = g_idle_source_new();
+    g_source_set_callback(source,
+                          run_dispatched,
+                          new DispatchedTask{this, std::move(action)},
+                          [](gpointer data) { delete static_cast<DispatchedTask*>(data); });
+    dispatch_sources_.insert(g_source_attach(source, g_main_context_default()));
+    g_source_unref(source);
+    return true;
+  }
+
+  void stop_dispatch()
+  {
+    std::set<guint> sources;
+    {
+      std::lock_guard lock(dispatch_mutex_);
+      dispatch_stopped_ = true;
+      sources.swap(dispatch_sources_);
+    }
+    for (const auto source : sources)
+      g_source_remove(source);
   }
 
   static void activate(GApplication*, gpointer context)
@@ -220,7 +271,6 @@ private:
                                    },
                                    [this] { return controller_->state().interface_mode; },
                                    [this] { controller_->shutdown(); }});
-    accepting_requests_ = true;
     g_application_hold(G_APPLICATION(application_));
     refresh_source_ = g_timeout_add(500, refresh, this);
     if (show_on_start_)
@@ -240,7 +290,8 @@ private:
     }
     if (stopping)
     {
-      accepting_requests_ = false;
+      approvals_->close();
+      stop_dispatch();
       refresh_source_ = 0;
       if (window_)
         window_->close();
@@ -253,9 +304,7 @@ private:
       return G_SOURCE_CONTINUE;
     refresh_ticks_ = 0;
     controller_->refresh();
-    const auto page = window_->current_page();
-    if (page != ManagementPage::advanced_settings)
-      window_->redraw();
+    window_->redraw();
     return G_SOURCE_CONTINUE;
   }
 
@@ -273,15 +322,22 @@ private:
   std::unique_ptr<LinuxStatusNotifierItem> status_item_;
   guint refresh_source_ = 0;
   std::uint32_t refresh_ticks_ = 0;
-  std::atomic<bool> accepting_requests_{false};
-  std::mutex request_mutex_;
-  std::set<std::pair<std::string, std::string>> pending_role_requests_;
-  std::set<std::pair<std::string, std::string>> pending_global_requests_;
+  std::unique_ptr<ManagementApprovalDispatcher> approvals_;
+  std::mutex dispatch_mutex_;
+  std::set<guint> dispatch_sources_;
+  bool dispatch_stopped_ = false;
+  struct PairingCloseTarget
+  {
+    std::mutex mutex;
+    std::function<void()> hide;
+  };
+  // A retained close callback prolongs only this gate, never the frontend or GTK resources.
+  std::shared_ptr<PairingCloseTarget> pairing_close_ = std::make_shared<PairingCloseTarget>();
 };
 
 bool activate_existing_management_ui()
 {
-  auto* application = g_application_new(application_id, G_APPLICATION_DEFAULT_FLAGS);
+  auto* application = g_application_new(application_id, application_flags);
   GError* error = nullptr;
   if (!g_application_register(application, nullptr, &error))
   {
@@ -306,7 +362,9 @@ LinuxManagementUi::LinuxManagementUi(
     ManagementInterfaceMode interface_mode,
     std::function<void(ManagementInterfaceMode)> interface_mode_changed,
     ManagementUiCallbacks callbacks,
-    ShutdownSignal& shutdown)
+    ShutdownSignal& shutdown,
+    std::function<void(const RoleChangeRequest&, bool)> decide_role,
+    std::function<void(const GlobalSettingChangeRequest&, bool)> decide_global)
     : implementation_(std::make_unique<Implementation>(std::move(companion_name),
                                                        std::move(version),
                                                        obs_connection_configured,
@@ -315,7 +373,9 @@ LinuxManagementUi::LinuxManagementUi(
                                                        interface_mode,
                                                        std::move(interface_mode_changed),
                                                        std::move(callbacks),
-                                                       shutdown))
+                                                       shutdown,
+                                                       std::move(decide_role),
+                                                       std::move(decide_global)))
 {
 }
 
@@ -326,15 +386,13 @@ int LinuxManagementUi::run()
   return implementation_->run();
 }
 
-bool LinuxManagementUi::request_role_change(ManagementRoleChangeRequest request,
-                                            ManagementApprovalDecision decision)
+ManagementApprovalRequesters LinuxManagementUi::approval_requesters() const
 {
-  return implementation_->request_role_change(std::move(request), std::move(decision));
+  return implementation_->approval_requesters();
 }
 
-bool LinuxManagementUi::request_global_setting_change(ManagementGlobalSettingChangeRequest request,
-                                                      ManagementApprovalDecision decision)
+std::function<void()> LinuxManagementUi::pairing_closed_handler() const
 {
-  return implementation_->request_global_setting_change(std::move(request), std::move(decision));
+  return implementation_->pairing_closed_handler();
 }
 } // namespace studio_remote::linux

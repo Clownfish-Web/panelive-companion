@@ -159,13 +159,42 @@ locally with an ad-hoc signature by default. To use your own identity, configure
 for the helper. Local signatures do not establish notarization or release acceptance.
 See [running instructions](RUNNING.md#macos).
 
-## Linux x86_64 (Ubuntu)
+## Linux x86_64 (Ubuntu and Debian)
 
-Ubuntu 22.04 is the intended floor; Ubuntu 24.04 is also a target. Use a native Linux
-checkout, CMake 3.28+ (22.04's default CMake is too old), and an OBS/Qt6 development
-installation matching the OBS you will run. Distribution OBS packages must supply
-both `libobs` and `obs-frontend-api` CMake configurations. Older Qt5-based OBS packages
-and sandboxed Flatpak/Snap OBS installations are not covered by these instructions.
+Ubuntu 22.04 with Linux 5.15, glibc 2.35, GTK 4.6 and Libadwaita 1.1 is the support
+floor; Ubuntu 24.04 is the newer-LTS verification target. The standalone Companion
+also targets Debian 12 or newer GUI desktops. Build distributable binaries in Ubuntu
+22.04 userspace: changing package dependencies cannot lower a newer binary's runtime
+requirements. A container verifies userspace; kernel-floor validation needs a Linux
+5.15 VM.
+
+Use a native Linux checkout and CMake 3.28+ (22.04's default CMake is too old).
+The helper requires native OBS 30 or newer with Qt 6 and links the OBS 30 shared-library
+ABI. OBS must supply matching development headers and both `libobs` and
+`obs-frontend-api` CMake configurations. Ubuntu 22.04's stock OBS 27 and Debian 12's
+stock OBS 29.0 are too old for the helper. The baseline build uses OBS 30.2.3 from
+the official OBS PPA, whose package includes its development headers and replaces
+the stock `libobs-dev`/`libobs0`. Do not mix headers and libraries from different OBS
+releases. Flatpak/Snap OBS is not supported by the native helper packages.
+
+The [Ubuntu 22.04 build recipe](../tools/dependencies/linux-jammy.Containerfile)
+pins the base image, authenticates the OBS PPA, selects the baseline OBS SDK and
+verifies the downloaded CMake archive. With Podman installed, run from the repository
+root:
+
+```sh
+podman build -f tools/dependencies/linux-jammy.Containerfile -t panelive-jammy-build .
+podman run --rm -it -v "$PWD:/workspace" panelive-jammy-build bash
+```
+
+Inside this container, continue with the vcpkg/build commands below. Keep the mount
+path and compiler consistent for a configured tree. Use separate build and installed
+dependency trees for Ubuntu 22.04 and 24.04; do not run concurrent vcpkg operations
+against one checkout. Record `dpkg-query -W` with release evidence because apt security
+updates can change the environment even with pinned build inputs.
+
+For a native build, install these dependencies and the matching OBS SDK first. The
+container already supplies them; omit `libobs-dev` when using the PPA package above:
 
 ```sh
 sudo apt-get update
@@ -175,6 +204,11 @@ sudo apt-get install --yes \
   libgtk-4-dev libsecret-1-dev libjpeg-dev libobs-dev libpulse-dev \
   nasm ninja-build pkg-config qt6-base-dev tar unzip zip python3 \
   autoconf automake libtool
+```
+
+Then bootstrap a Linux-local vcpkg checkout and build:
+
+```sh
 git clone https://github.com/microsoft/vcpkg .buildtools/vcpkg
 baseline=$(python3 -c 'import json; print(json.load(open("vcpkg.json"))["builtin-baseline"])')
 git -C .buildtools/vcpkg checkout "$baseline"
@@ -186,16 +220,24 @@ cpack --config out/build/linux-x64-release/CPackConfig.cmake -G DEB
 sha256sum out/package/linux/*.deb
 ```
 
-Linux builds the OBS helper as part of the top-level build. CPack writes a Debian
-package under `out/package/linux/`. For an unpacked staging tree instead:
+Linux builds the OBS helper as part of the top-level build. CPack writes separate
+`panelive-companion` and `panelive-companion-obs-plugin` Debian packages under
+`out/package/linux/`, retaining the manifest prerelease as `0.1.0~beta.1`.
+The Companion only suggests the helper, so standalone teleprompter use does not
+require OBS. `dpkg-shlibdeps` derives native dependencies from each binary. The
+distro's libjpeg archive is linked statically to avoid Ubuntu/Debian SONAME differences;
+its license and the vcpkg dependency SPDX inventories are included in the package.
+For an unpacked staging tree containing both payloads instead:
 
 ```sh
 cmake --install out/build/linux-x64-release \
   --prefix "$PWD/out/package/linux-custom/usr"
 ```
 
-Use [the Debian installation instructions](RUNNING.md#linux) to install the helper,
-desktop integration and system dependencies together. Do not run the Companion as root.
+Use [the Debian installation instructions](RUNNING.md#linux) to install the Companion
+and optional OBS helper. Verify package install, upgrade, reinstall, removal, desktop
+launch, autostart and OBS helper loading on clean target systems. Do not run the
+Companion as root.
 
 ## Build options and package contents
 

@@ -14,7 +14,7 @@
 
 namespace
 {
-constexpr std::uint32_t minimum_obs_api_version = MAKE_SEMANTIC_VERSION(28, 0, 0);
+constexpr std::uint32_t minimum_obs_api_version = MAKE_SEMANTIC_VERSION(30, 0, 0);
 obs_module_t* module_pointer = nullptr;
 std::unique_ptr<studio_remote::obs_plugin::SharedFramePublisher> publisher;
 std::unique_ptr<studio_remote::obs_plugin::ObsFrameCapture> capture;

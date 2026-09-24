@@ -14,35 +14,21 @@ struct NavigationItem
   ManagementPage page;
   std::string_view label;
   std::string_view icon;
-  std::string_view secondary_icon;
   bool footer = false;
 };
 
 constexpr std::array navigation_items{
-    NavigationItem{
-        ManagementPage::clients, "Clients", "network-cellular-symbolic", "input-tablet-symbolic"},
-    NavigationItem{ManagementPage::adapters, "Adapters", "network-transmit-receive-symbolic", ""},
-    NavigationItem{ManagementPage::teleprompter, "Teleprompter", "text-x-generic-symbolic", ""},
-    NavigationItem{
-        ManagementPage::companion_settings, "Companion Settings", "computer-symbolic", ""},
-    NavigationItem{ManagementPage::status, "Status", "emblem-ok-symbolic", ""},
-    NavigationItem{
-        ManagementPage::diagnostics, "Diagnostics", "utilities-system-monitor-symbolic", ""},
+    NavigationItem{ManagementPage::clients, "Clients", "network-workgroup-symbolic"},
+    NavigationItem{ManagementPage::adapters, "Adapters", "network-transmit-receive-symbolic"},
+    NavigationItem{ManagementPage::teleprompter, "Teleprompter", "text-x-generic-symbolic"},
+    NavigationItem{ManagementPage::companion_settings, "Companion Settings", "computer-symbolic"},
+    NavigationItem{ManagementPage::status, "Status", "emblem-ok-symbolic"},
+    NavigationItem{ManagementPage::diagnostics, "Diagnostics", "utilities-system-monitor-symbolic"},
     NavigationItem{ManagementPage::advanced_settings,
                    "Advanced Settings",
                    "preferences-system-symbolic",
-                   "",
                    true},
-    NavigationItem{ManagementPage::about, "About", "help-about-symbolic", "", true}};
-
-bool same_sharing_selection(const std::optional<teleprompter::SessionAssignment>& previous,
-                            const std::optional<teleprompter::SessionAssignment>& current)
-{
-  if (!previous || !current)
-    return previous.has_value() == current.has_value();
-  return previous->script_ids == current->script_ids && previous->members == current->members &&
-         previous->owner_role == current->owner_role;
-}
+    NavigationItem{ManagementPage::about, "About", "help-about-symbolic", true}};
 
 void remove_children(GtkWidget* container)
 {
@@ -92,26 +78,50 @@ LinuxManagementWindow::LinuxManagementWindow(AdwApplication* application,
   gtk_box_append(GTK_BOX(body), navigation_);
   auto* separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
   gtk_box_append(GTK_BOX(body), separator);
-  gtk_box_append(GTK_BOX(body), content_);
+  auto* content_overlay = gtk_overlay_new();
+  gtk_widget_set_hexpand(content_overlay, TRUE);
+  gtk_overlay_set_child(GTK_OVERLAY(content_overlay), content_);
+  pairing_preview_host_ = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_name(pairing_preview_host_, "pairing-preview");
+  gtk_widget_add_css_class(pairing_preview_host_, "pairing-preview-backdrop");
+  gtk_widget_set_visible(pairing_preview_host_, FALSE);
+  gtk_overlay_add_overlay(GTK_OVERLAY(content_overlay), pairing_preview_host_);
+  gtk_box_append(GTK_BOX(body), content_overlay);
   gtk_box_append(GTK_BOX(shell), body);
   adw_application_window_set_content(ADW_APPLICATION_WINDOW(window_), shell);
+  create_content();
   redraw();
+}
+
+LinuxManagementWindow::~LinuxManagementWindow()
+{
+  if (window_)
+    close();
 }
 
 void LinuxManagementWindow::activate()
 {
+  controller_.refresh();
+  redraw();
   gtk_window_present(window_);
 }
 
 void LinuxManagementWindow::hide()
 {
+  close_pairing_preview();
   cancel_client_identification();
   gtk_widget_set_visible(GTK_WIDGET(window_), FALSE);
 }
 
 void LinuxManagementWindow::close()
 {
+  if (!window_)
+    return;
+  close_pairing_preview();
+  role_dialogs_.close();
+  global_dialogs_.close();
   cancel_client_identification();
+  pages_.reset();
   gtk_window_destroy(window_);
   window_ = nullptr;
 }
@@ -119,45 +129,70 @@ void LinuxManagementWindow::close()
 void LinuxManagementWindow::request_role_change(ManagementRoleChangeRequest request,
                                                 ManagementApprovalDecision decision)
 {
-  ui::approve(window_,
-              "Client role request",
-              "Allow '" + request.device_name + "' to become " + request.requested_role + " for " +
-                  request.backend_name + "?",
-              std::move(decision));
+  role_dialogs_.show(window_,
+                     request.device_id,
+                     request.request_id,
+                     "Client role request",
+                     "Allow '" + request.device_name + "' to become " + request.requested_role +
+                         " for " + request.backend_name + "?",
+                     std::move(decision));
   activate();
 }
 
 void LinuxManagementWindow::request_global_setting_change(
     ManagementGlobalSettingChangeRequest request, ManagementApprovalDecision decision)
 {
-  ui::approve(window_,
-              "Global setting request",
-              "'" + request.device_name + "' requested " + request.setting_name + ".\n\n" +
-                  request.warning,
-              std::move(decision));
+  global_dialogs_.show(window_,
+                       request.device_id,
+                       request.request_id,
+                       "Global setting request",
+                       "'" + request.device_name + "' requested " + request.setting_name + ".\n\n" +
+                           request.warning,
+                       std::move(decision));
   activate();
+}
+
+void LinuxManagementWindow::cancel_role_change(std::string_view device, std::string_view request)
+{
+  role_dialogs_.cancel(device, request);
+}
+
+void LinuxManagementWindow::cancel_global_setting_change(std::string_view device,
+                                                         std::string_view request)
+{
+  global_dialogs_.cancel(device, request);
 }
 
 void LinuxManagementWindow::redraw()
 {
   current_page_ = visible_management_page(controller_.state().interface_mode, current_page_);
+  update_pairing_preview();
   rebuild_navigation();
-  const LinuxPageContext context{controller_, window_, [this] { redraw(); }};
-  const auto& teleprompter = controller_.teleprompter().state();
-  const bool retain =
-      (current_page_ == ManagementPage::clients || current_page_ == ManagementPage::teleprompter) &&
-      (teleprompter.editor || teleprompter.sharing);
-  if (retain && teleprompter_form_ &&
-      teleprompter_form_generation_ == teleprompter.form_generation &&
-      same_sharing_selection(teleprompter_sharing_selection_, teleprompter.sharing))
-  {
-    gtk_label_set_text(GTK_LABEL(error_bar_), controller_.state().last_error.c_str());
-    gtk_widget_set_visible(error_bar_, !controller_.state().last_error.empty());
-    refresh_linux_teleprompter_page(teleprompter_form_, context);
-    return;
-  }
-  teleprompter_form_ = nullptr;
-  remove_children(content_);
+  const LinuxPageContext context{
+      controller_, window_, [this] { redraw(); }, [this] { open_pairing_preview(); }};
+  gtk_label_set_text(GTK_LABEL(error_bar_), controller_.state().last_error.c_str());
+  gtk_widget_set_visible(error_bar_, !controller_.state().last_error.empty());
+  const auto& network = controller_.state().network_settings;
+  gtk_widget_set_visible(recovery_card_,
+                         !network.listening &&
+                             controller_.state().interface_mode == ManagementInterfaceMode::basic);
+  gtk_label_set_text(GTK_LABEL(recovery_message_),
+                     network.warning.empty() ? "The Companion listener needs attention."
+                                             : network.warning.c_str());
+  pages_->show(current_page_, context);
+  show_client_identification();
+}
+
+void LinuxManagementWindow::clear_pairing()
+{
+  close_pairing_preview();
+  controller_.clear_pairing();
+  if (current_page_ == ManagementPage::clients)
+    redraw();
+}
+
+void LinuxManagementWindow::create_content()
+{
   error_bar_ = ui::badge(controller_.state().last_error, "error");
   gtk_widget_set_name(error_bar_, "error-bar");
   gtk_widget_set_margin_top(error_bar_, 12);
@@ -165,48 +200,34 @@ void LinuxManagementWindow::redraw()
   gtk_widget_set_margin_end(error_bar_, 24);
   gtk_widget_set_visible(error_bar_, !controller_.state().last_error.empty());
   gtk_box_append(GTK_BOX(content_), error_bar_);
-  const auto& network = controller_.state().network_settings;
-  if (!network.listening && controller_.state().interface_mode == ManagementInterfaceMode::basic)
-  {
-    auto* recovery = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-    gtk_widget_set_margin_top(recovery, 12);
-    gtk_widget_set_margin_start(recovery, 24);
-    gtk_widget_set_margin_end(recovery, 24);
-    auto* message = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
-    gtk_widget_set_hexpand(message, TRUE);
-    gtk_box_append(GTK_BOX(message), ui::section_title("Companion listener needs attention"));
-    gtk_box_append(GTK_BOX(message),
-                   ui::description(network.warning.empty()
-                                       ? "The Companion listener needs attention."
-                                       : network.warning));
-    gtk_box_append(GTK_BOX(recovery), message);
-    auto* open_settings =
-        ui::button("Open Companion Settings",
-                   [this]
-                   {
-                     controller_.set_interface_mode(ManagementInterfaceMode::advanced);
-                     select_page(ManagementPage::companion_settings);
-                   });
-    gtk_widget_set_valign(open_settings, GTK_ALIGN_CENTER);
-    gtk_box_append(GTK_BOX(recovery), open_settings);
-    auto* recovery_card = ui::card(recovery);
-    gtk_widget_add_css_class(recovery_card, "warning");
-    gtk_box_append(GTK_BOX(content_), recovery_card);
-  }
+  auto* recovery = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_set_margin_top(recovery, 12);
+  gtk_widget_set_margin_start(recovery, 24);
+  gtk_widget_set_margin_end(recovery, 24);
+  auto* message = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
+  gtk_widget_set_hexpand(message, TRUE);
+  gtk_box_append(GTK_BOX(message), ui::section_title("Companion listener needs attention"));
+  recovery_message_ = ui::description({});
+  gtk_box_append(GTK_BOX(message), recovery_message_);
+  gtk_box_append(GTK_BOX(recovery), message);
+  auto* open_settings =
+      ui::button("Open Companion Settings",
+                 [this]
+                 {
+                   controller_.set_interface_mode(ManagementInterfaceMode::advanced);
+                   select_page(ManagementPage::companion_settings);
+                 });
+  gtk_widget_set_valign(open_settings, GTK_ALIGN_CENTER);
+  gtk_box_append(GTK_BOX(recovery), open_settings);
+  recovery_card_ = ui::card(recovery);
+  gtk_widget_add_css_class(recovery_card_, "warning");
+  gtk_box_append(GTK_BOX(content_), recovery_card_);
   auto* scroll = gtk_scrolled_window_new();
   gtk_scrolled_window_set_policy(
       GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-  auto* page = make_current_page();
-  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), page);
-  if (retain)
-  {
-    teleprompter_form_ = page;
-    teleprompter_form_generation_ = teleprompter.form_generation;
-    teleprompter_sharing_selection_ = teleprompter.sharing;
-  }
   gtk_widget_set_vexpand(scroll, TRUE);
   gtk_box_append(GTK_BOX(content_), scroll);
-  show_client_identification();
+  pages_ = std::make_unique<LinuxManagementPagesHost>(GTK_SCROLLED_WINDOW(scroll), version_);
 }
 
 GtkWindow* LinuxManagementWindow::window() const noexcept
@@ -240,6 +261,7 @@ void LinuxManagementWindow::select_page(ManagementPage page)
       controller_.teleprompter().open_library();
   }
   current_page_ = visible_management_page(controller_.state().interface_mode, page);
+  close_pairing_preview();
   redraw();
 }
 
@@ -265,21 +287,15 @@ void LinuxManagementWindow::rebuild_navigation()
     if (!management_page_visible(controller_.state().interface_mode, item.page))
       continue;
     auto* button = ui::button(item.label, [this, page = item.page] { select_page(page); });
+    if (item.page == ManagementPage::clients)
+      gtk_widget_set_name(button, "navigation-clients");
     gtk_widget_set_halign(button, GTK_ALIGN_FILL);
     gtk_widget_add_css_class(button, "flat");
     if (item.page == current_page_)
       gtk_widget_add_css_class(button, "selected");
     auto* content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-    auto* icon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    auto* primary_icon = gtk_image_new_from_icon_name(std::string(item.icon).c_str());
-    gtk_image_set_pixel_size(GTK_IMAGE(primary_icon), item.secondary_icon.empty() ? 18 : 15);
-    gtk_box_append(GTK_BOX(icon), primary_icon);
-    if (!item.secondary_icon.empty())
-    {
-      auto* secondary_icon = gtk_image_new_from_icon_name(std::string(item.secondary_icon).c_str());
-      gtk_image_set_pixel_size(GTK_IMAGE(secondary_icon), 12);
-      gtk_box_append(GTK_BOX(icon), secondary_icon);
-    }
+    auto* icon = gtk_image_new_from_icon_name(std::string(item.icon).c_str());
+    gtk_image_set_pixel_size(GTK_IMAGE(icon), 18);
     gtk_widget_set_size_request(icon, 24, 20);
     auto* label = gtk_label_new(std::string(item.label).c_str());
     gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
@@ -295,30 +311,4 @@ void LinuxManagementWindow::rebuild_navigation()
   gtk_box_append(GTK_BOX(navigation_), footer);
 }
 
-GtkWidget* LinuxManagementWindow::make_current_page()
-{
-  const LinuxPageContext context{controller_, window_, [this] { redraw(); }};
-  switch (current_page_)
-  {
-  case ManagementPage::clients:
-    return make_linux_clients_page(context);
-  case ManagementPage::teleprompter:
-    if (controller_.teleprompter().state().view != TeleprompterView::library)
-      controller_.teleprompter().open_library();
-    return make_linux_teleprompter_page(context);
-  case ManagementPage::adapters:
-    return make_linux_adapters_page(context);
-  case ManagementPage::companion_settings:
-    return make_linux_companion_settings_page(context);
-  case ManagementPage::status:
-    return make_linux_status_page(context);
-  case ManagementPage::diagnostics:
-    return make_linux_diagnostics_page(context);
-  case ManagementPage::advanced_settings:
-    return make_linux_advanced_settings_page(context);
-  case ManagementPage::about:
-    return make_linux_about_page(version_);
-  }
-  return make_linux_clients_page(context);
-}
 } // namespace studio_remote::linux

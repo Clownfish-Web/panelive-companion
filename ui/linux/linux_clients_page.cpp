@@ -86,7 +86,8 @@ GtkWidget* make_linux_clients_page(LinuxPageContext context)
         context.controller.identify_all_clients();
         context.redraw();
       },
-      std::ranges::any_of(context.controller.state().clients, &ManagementClientRow::connected));
+      !context.controller.state().identification &&
+          std::ranges::any_of(context.controller.state().clients, &ManagementClientRow::connected));
   gtk_widget_set_name(identify_all, "clients-identify-all");
   append(commands, identify_all);
   auto* refresh = button("Refresh",
@@ -114,6 +115,16 @@ GtkWidget* make_linux_clients_page(LinuxPageContext context)
     auto* pairing = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20);
     gtk_widget_set_name(pairing, "pairing-card");
     append(pairing, make_linux_pairing_qr(state.pairing->payload));
+    auto* enlarge = client_action_button(gtk_image_new_from_icon_name("zoom-in-symbolic"),
+                                         "Enlarge pairing QR for 30 seconds",
+                                         [context]
+                                         {
+                                           if (context.enlarge_pairing)
+                                             context.enlarge_pairing();
+                                         });
+    gtk_widget_set_name(enlarge, "pairing-enlarge");
+    gtk_widget_set_valign(enlarge, GTK_ALIGN_CENTER);
+    append(pairing, enlarge);
     auto* explanation = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_widget_set_valign(explanation, GTK_ALIGN_CENTER);
     append(explanation, section_title("Pair a new client"));
@@ -231,16 +242,16 @@ GtkWidget* make_linux_clients_page(LinuxPageContext context)
         });
     auto* actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_widget_set_size_request(actions, 210, -1);
-    auto* identify = button(
-        "Identify",
+    auto* identify = client_action_button(
+        gtk_image_new_from_icon_name("find-location-symbolic"),
+        "Identify client",
         [context, id = client.id]
         {
           context.controller.identify_client(id);
           context.redraw();
         },
-        client.connected);
+        client.connected && !state.identification);
     gtk_widget_set_name(identify, "client-identify");
-    gtk_widget_set_tooltip_text(identify, "Identify client");
     append(actions, identify);
     append(actions, change_role);
     const bool attached = client.attached_script_count.value_or(0) > 0;

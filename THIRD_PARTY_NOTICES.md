@@ -62,8 +62,11 @@ dependencies; retain those when redistributing that build.
 The separately built [OBS helper](obs-plugin/LICENSE) is GPL-2.0-or-later and includes
 the complete GPL version 2 text. It links to the user's OBS and Qt installation, not
 the Apache-licensed Companion. OBS and Qt are not bundled in this source repository.
+Linux builds statically link the distribution's libjpeg-turbo archive so Ubuntu and Debian
+JPEG SONAME differences do not restrict the Companion package. Its complete license notice is
+installed as `share/panelive-companion/licenses/libjpeg-turbo.txt`.
 Native macOS frameworks and Linux GTK/libadwaita, Avahi, Secret Service, PulseAudio,
-libjpeg and Qt dependencies are supplied by the operating system or package manager
+and Qt dependencies are supplied by the operating system or package manager
 and retain their upstream licenses.
 
 The version table above records the pinned Windows dependency set, not a claim that

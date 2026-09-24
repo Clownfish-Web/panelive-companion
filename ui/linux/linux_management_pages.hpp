@@ -13,6 +13,7 @@ struct LinuxPageContext
   ManagementUiController& controller;
   GtkWindow* window;
   std::function<void()> redraw;
+  std::function<void()> enlarge_pairing = {};
 };
 
 GtkWidget* make_linux_teleprompter_page(LinuxPageContext context);
@@ -27,4 +28,9 @@ GtkWidget* make_linux_status_page(LinuxPageContext context);
 GtkWidget* make_linux_diagnostics_page(LinuxPageContext context);
 GtkWidget* make_linux_advanced_settings_page(LinuxPageContext context);
 GtkWidget* make_linux_about_page(std::string_view version);
+// Update observations and immediate settings only, never reload uncommitted form fields.
+void refresh_linux_adapters_page(GtkWidget* page, LinuxPageContext context);
+void refresh_linux_companion_settings_page(GtkWidget* page, LinuxPageContext context);
+void refresh_linux_advanced_settings_page(GtkWidget* page, LinuxPageContext context);
+void refresh_linux_diagnostics_page(GtkWidget* page, LinuxPageContext context);
 } // namespace studio_remote::linux

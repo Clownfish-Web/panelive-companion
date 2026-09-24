@@ -1,4 +1,5 @@
 #include "obs_audio_mixer_roster.hpp"
+#include "obs_frontend_symbols.hpp"
 
 #ifdef __APPLE__
 #include "../../platform/macos/ipc/macos_ipc_names.hpp"
@@ -27,13 +28,29 @@ namespace
 constexpr std::uint64_t refresh_interval_ns = 500'000'000ULL;
 constexpr int global_audio_source_count = 6;
 
+using FrontendConfig = config_t* (*)();
+
+FrontendConfig frontend_config_function()
+{
+  const char* name = obs_get_version() >= MAKE_SEMANTIC_VERSION(31, 0, 0)
+                         ? "obs_frontend_get_user_config"
+                         : "obs_frontend_get_global_config";
+  const auto address = obs_frontend_symbol(name);
+  FrontendConfig function = nullptr;
+  static_assert(sizeof(function) == sizeof(address));
+  std::memcpy(&function, &address, sizeof(function));
+  return function;
+}
+
 #if !defined(_WIN32) && !defined(__APPLE__)
 template <typename Mapping> Mapping* create_mapping(const char* name, int& descriptor)
 {
   const auto candidate = shm_open(name, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
   if (candidate < 0)
     return nullptr;
-  struct stat status{};
+  struct stat status
+  {
+  };
   if (fstat(candidate, &status) != 0 || status.st_uid != geteuid() ||
       fchmod(candidate, 0600) != 0 ||
       ftruncate(candidate, static_cast<off_t>(sizeof(Mapping))) != 0)
@@ -125,6 +142,11 @@ bool ObsAudioMixerRoster::start()
 {
   if (started_)
     return true;
+  if (!frontend_config_function())
+  {
+    blog(LOG_ERROR, "[PaneLive Companion] OBS frontend configuration API is unavailable");
+    return false;
+  }
   if (!open_mapping())
     return false;
   obs_frontend_add_event_callback(handle_frontend_event, this);
@@ -173,7 +195,8 @@ void ObsAudioMixerRoster::refresh()
 
   const auto globals = global_source_uuids();
   const auto previews = preview_source_uuids();
-  config_t* config = obs_frontend_get_user_config();
+  const auto get_config = frontend_config_function();
+  config_t* config = get_config ? get_config() : nullptr;
   const bool show_inactive = config && config_get_bool(config, "BasicWindow", "MixerShowInactive");
   const bool show_hidden = config && config_get_bool(config, "BasicWindow", "MixerShowHidden");
 
