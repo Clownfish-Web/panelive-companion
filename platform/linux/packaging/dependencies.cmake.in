@@ -1,0 +1,29 @@
+# Evaluated by CPack after the binaries have been built, before the DEB generator.
+# A dormant OBS plugin is not a dependency of standalone Companion. Derive both
+# sets of requirements rather than deleting OBS dependencies from a combined scan.
+if(NOT CPACK_GENERATOR STREQUAL "DEB")
+  return()
+endif()
+find_program(PANELIVE_DPKG_SHLIBDEPS dpkg-shlibdeps REQUIRED)
+set(scan_dir "@CMAKE_CURRENT_BINARY_DIR@/linux-dependency-scan")
+file(MAKE_DIRECTORY "${scan_dir}/debian")
+file(WRITE "${scan_dir}/debian/control" "")
+function(panelive_scan_dependencies binary result)
+  execute_process(COMMAND "${PANELIVE_DPKG_SHLIBDEPS}" -O "${binary}"
+    WORKING_DIRECTORY "${scan_dir}"
+    OUTPUT_VARIABLE dependencies ERROR_VARIABLE diagnostics
+    RESULT_VARIABLE status OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(NOT status EQUAL 0 OR NOT dependencies MATCHES "^shlibs:Depends=")
+    message(FATAL_ERROR "Cannot derive dependencies for ${binary}: ${diagnostics}")
+  endif()
+  string(REGEX REPLACE "^shlibs:Depends=" "" dependencies "${dependencies}")
+  set(${result} "${dependencies}" PARENT_SCOPE)
+endfunction()
+panelive_scan_dependencies("@CMAKE_CURRENT_BINARY_DIR@/panelive-companion"
+  CPACK_DEBIAN_PACKAGE_DEPENDS)
+panelive_scan_dependencies("@CMAKE_CURRENT_BINARY_DIR@/obs-plugin/panelive-companion-obs-plugin.so"
+  helper_dependencies)
+# Retain the actual helper library requirements as optional integration metadata.
+# APT must not install OBS just to use the teleprompter. postinst/trigger activation
+# separately requires native OBS >= 30 with the matching ABI and resolved symbols.
+set(CPACK_DEBIAN_PACKAGE_SUGGESTS "obs-studio (>= 30.0), ${helper_dependencies}")

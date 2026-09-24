@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+case "$1" in
+  configure|triggered|abort-upgrade|abort-remove|abort-deconfigure)
+    /usr/lib/panelive-companion/configure-obs-helper
+    ;;
+esac
+exit 0

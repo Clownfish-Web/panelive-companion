@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+case "$1" in
+  remove|purge)
+    binary_link=/usr/lib/@CMAKE_LIBRARY_ARCHITECTURE@/obs-plugins/panelive-companion-obs-plugin.so
+    data_link=/usr/share/obs/obs-plugins/panelive-companion-obs-plugin
+    if [ -L "$binary_link" ] && [ "$(readlink "$binary_link")" = /usr/lib/panelive-companion/obs-plugin/panelive-companion-obs-plugin.so ]; then
+      rm -- "$binary_link"
+    fi
+    if [ -L "$data_link" ] && [ "$(readlink "$data_link")" = /usr/share/panelive-companion/obs-plugin/data ]; then
+      rm -- "$data_link"
+    fi
+    rm -f /var/lib/panelive-companion/obs-helper-status
+    rmdir /var/lib/panelive-companion 2>/dev/null || true
+    ;;
+esac
+exit 0

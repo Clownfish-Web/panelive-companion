@@ -3,6 +3,7 @@
 #include "linux_ui_helpers.hpp"
 
 #include <algorithm>
+#include <fstream>
 
 namespace studio_remote::linux
 {
@@ -44,6 +45,7 @@ GtkWidget* make_linux_adapters_page(LinuxPageContext context)
   append(obs_heading, obs_title);
   append(obs_heading, named(badge({}, "warning"), "obs-status"));
   append(obs, obs_heading);
+  append(obs, named(description({}), "obs-helper-setup"));
   auto* obs_host = entry(state.obs_connection.host);
   auto* obs_port = spin(state.obs_connection.port, 1, 65'535);
   auto* obs_password = entry({}, "Leave empty to keep the stored password", true);
@@ -131,6 +133,12 @@ void refresh_linux_adapters_page(GtkWidget* page, LinuxPageContext context)
                     state.obs_connection.status.empty() ? "Not configured"
                                                         : state.obs_connection.status,
                     state.obs_connection.connected ? "healthy" : "warning");
+  std::ifstream helper_status("/var/lib/panelive-companion/obs-helper-status");
+  std::string helper_message;
+  if (!std::getline(helper_status, helper_message) || helper_message.empty())
+    helper_message = "The Linux installer includes the OBS helper and sets it up for compatible "
+                     "native OBS installations. OBS 30 or newer with Qt 6 is required.";
+  gtk_label_set_text(GTK_LABEL(ui::find_widget(page, "obs-helper-setup")), helper_message.c_str());
 }
 
 void refresh_linux_companion_settings_page(GtkWidget* page, LinuxPageContext context)

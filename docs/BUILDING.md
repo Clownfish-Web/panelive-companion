@@ -161,9 +161,11 @@ See [running instructions](RUNNING.md#macos).
 
 ## Linux x86_64 (Ubuntu and Debian)
 
-Ubuntu 22.04 with Linux 5.15, glibc 2.35, GTK 4.6 and Libadwaita 1.1 is the support
-floor; Ubuntu 24.04 is the newer-LTS verification target. The standalone Companion
-also targets Debian 12 or newer GUI desktops. Build distributable binaries in Ubuntu
+Ubuntu 22.04 with Linux 5.15, glibc 2.35, GTK 4.6 and Libadwaita 1.1 is the declared
+support floor. The same baseline-built Companion installer has passed package and
+desktop/runtime checks on Ubuntu 22.04, 24.04 and 26.04, plus Debian 12 and 13.
+See [Linux support and validation](LINUX_SUPPORT.md) for the exact test scope and
+OBS helper requirements. Build distributable binaries in Ubuntu
 22.04 userspace: changing package dependencies cannot lower a newer binary's runtime
 requirements. A container verifies userspace; kernel-floor validation needs a Linux
 5.15 VM.
@@ -175,7 +177,7 @@ ABI. OBS must supply matching development headers and both `libobs` and
 stock OBS 29.0 are too old for the helper. The baseline build uses OBS 30.2.3 from
 the official OBS PPA, whose package includes its development headers and replaces
 the stock `libobs-dev`/`libobs0`. Do not mix headers and libraries from different OBS
-releases. Flatpak/Snap OBS is not supported by the native helper packages.
+releases. Flatpak/Snap OBS cannot load the bundled native helper.
 
 The [Ubuntu 22.04 build recipe](../tools/dependencies/linux-jammy.Containerfile)
 pins the base image, authenticates the OBS PPA, selects the baseline OBS SDK and
@@ -217,16 +219,24 @@ export VCPKG_ROOT="$PWD/.buildtools/vcpkg"
 cmake --preset linux-x64-release
 cmake --build --preset linux-x64-release --parallel 4
 cpack --config out/build/linux-x64-release/CPackConfig.cmake -G DEB
-sha256sum out/package/linux/*.deb
+cd out/package/linux
+sha256sum --check SHA256SUMS-linux
 ```
 
-Linux builds the OBS helper as part of the top-level build. CPack writes separate
-`panelive-companion` and `panelive-companion-obs-plugin` Debian packages under
-`out/package/linux/`, retaining the manifest prerelease as `0.1.0~beta.1`.
-The Companion only suggests the helper, so standalone teleprompter use does not
-require OBS. `dpkg-shlibdeps` derives native dependencies from each binary. The
-distro's libjpeg archive is linked statically to avoid Ubuntu/Debian SONAME differences;
-its license and the vcpkg dependency SPDX inventories are included in the package.
+Linux builds the OBS helper as part of the top-level build. CPack writes one installer,
+`out/package/linux/panelive-companion-0.1.0-beta.1-linux-x64.deb`, and its checksum file,
+`SHA256SUMS-linux`. Debian package metadata retains the version `0.1.0~beta.1` and
+the package name `panelive-companion` for upgrade compatibility.
+
+The package includes the helper in a private directory. Maintainer scripts activate
+it for compatible native OBS, and APT file triggers recheck setup when OBS or its
+libraries change. `dpkg-shlibdeps` derives Companion's required dependencies and the
+helper's optional integration dependencies separately. The installer checks OBS's
+version, its `libobs.so.30` ABI and the helper's library/symbol resolution before
+exposing the helper to OBS. Standalone teleprompter use does not require OBS.
+
+The distro's libjpeg archive is linked statically to avoid Ubuntu/Debian SONAME
+differences; its license and the vcpkg dependency SPDX inventories are included.
 For an unpacked staging tree containing both payloads instead:
 
 ```sh
@@ -234,10 +244,13 @@ cmake --install out/build/linux-x64-release \
   --prefix "$PWD/out/package/linux-custom/usr"
 ```
 
-Use [the Debian installation instructions](RUNNING.md#linux) to install the Companion
-and optional OBS helper. Verify package install, upgrade, reinstall, removal, desktop
-launch, autostart and OBS helper loading on clean target systems. Do not run the
-Companion as root.
+Run the staging command from the repository root. A staged tree contains the dormant
+helper payload; APT installation performs automatic OBS setup. Use
+[the Debian installation instructions](RUNNING.md#linux) to install the combined
+package. Verify fresh install, migration from the split packages, upgrade, reinstall,
+removal, desktop launch, autostart, and OBS helper loading on clean target systems.
+Also check OBS installation after Companion, incompatible OBS, and OBS removal.
+Do not run Companion as root.
 
 ## Build options and package contents
 

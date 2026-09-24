@@ -1,0 +1,92 @@
+#!/bin/sh
+# Configure only the package-owned helper; never modify a user's OBS profile.
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+LC_ALL=C
+export LC_ALL
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo 'OBS helper setup is managed by the system package installer.' >&2
+  exit 1
+fi
+
+binary=/usr/lib/panelive-companion/obs-plugin/panelive-companion-obs-plugin.so
+data=/usr/share/panelive-companion/obs-plugin/data
+binary_link=/usr/lib/@CMAKE_LIBRARY_ARCHITECTURE@/obs-plugins/panelive-companion-obs-plugin.so
+data_link=/usr/share/obs/obs-plugins/panelive-companion-obs-plugin
+state_dir=/var/lib/panelive-companion
+
+remove_owned_links()
+{
+  if [ -L "$binary_link" ] && [ "$(readlink "$binary_link")" = "$binary" ]; then
+    rm -- "$binary_link"
+  fi
+  if [ -L "$data_link" ] && [ "$(readlink "$data_link")" = "$data" ]; then
+    rm -- "$data_link"
+  fi
+}
+
+record_status()
+{
+  install -d -m 755 "$state_dir"
+  status_file=$(mktemp "$state_dir/.obs-helper-status.XXXXXX")
+  printf '%s\n' "$1" > "$status_file"
+  chmod 644 "$status_file"
+  mv -f -- "$status_file" "$state_dir/obs-helper-status"
+  printf 'PaneLive Companion: %s\n' "$1"
+}
+
+inactive()
+{
+  remove_owned_links
+  record_status "$1"
+  exit 0
+}
+
+case "${1:-}" in
+  --remove) remove_owned_links; exit 0 ;;
+  '') ;;
+  *) echo 'Usage: configure-obs-helper [--remove]' >&2; exit 2 ;;
+esac
+
+test -f "$binary"
+test -f "$data/locale/en-US.ini"
+obs_status=$(dpkg-query -W -f='${Status}' obs-studio 2>/dev/null || true)
+case "$obs_status" in
+  'install ok installed'|'install ok triggers-pending'|'install ok triggers-awaited') ;;
+  *) inactive 'OBS not installed: the bundled helper will be set up automatically when compatible native OBS is installed. Teleprompter is ready to use.' ;;
+esac
+if [ ! -x /usr/bin/obs ]; then
+  inactive 'OBS not installed: the bundled helper will be set up automatically when compatible native OBS is installed. Teleprompter is ready to use.'
+fi
+obs_version=$(dpkg-query -W -f='${Version}' obs-studio)
+if ! dpkg --compare-versions "$obs_version" ge 30.0; then
+  inactive 'OBS upgrade required: install native OBS 30 or newer with Qt 6. The bundled helper will be set up automatically. Teleprompter is ready to use.'
+fi
+# Check the running host ABI as well as the plugin: a future OBS may coexist with
+# an old libobs.so.30, but loading both ABIs into one process would not be safe.
+obs_libraries=$(ldd /usr/bin/obs 2>&1) || inactive 'OBS helper inactive: the native OBS executable cannot resolve its runtime libraries.'
+if ! printf '%s\n' "$obs_libraries" | grep -Eq 'libobs\.so\.30[[:space:]]+=>'; then
+  inactive 'OBS helper inactive: this OBS installation does not use the supported libobs.so.30 ABI. Use a compatible native OBS installation.'
+fi
+helper_libraries=$(ldd -r "$binary" 2>&1) || inactive 'OBS helper inactive: required native OBS or Qt 6 libraries are unavailable. Repair the OBS installation.'
+if printf '%s\n' "$helper_libraries" | grep -Eq 'not found|undefined symbol'; then
+  inactive 'OBS helper inactive: required native OBS or Qt 6 libraries are missing or incompatible. Repair the OBS installation.'
+fi
+
+# Respect files installed manually or by another package instead of overwriting
+# them. APT removes the obsolete split helper package through Conflicts/Replaces.
+if { [ -e "$binary_link" ] || [ -L "$binary_link" ]; } &&
+   { [ ! -L "$binary_link" ] || [ "$(readlink "$binary_link")" != "$binary" ]; }; then
+  inactive 'OBS helper setup blocked: another helper exists in the system OBS plugin directory. Remove that older installation, then reinstall Companion.'
+fi
+if { [ -e "$data_link" ] || [ -L "$data_link" ]; } &&
+   { [ ! -L "$data_link" ] || [ "$(readlink "$data_link")" != "$data" ]; }; then
+  inactive 'OBS helper setup blocked: another helper data directory exists in OBS. Remove that older installation, then reinstall Companion.'
+fi
+mkdir -p "$(dirname "$binary_link")" "$(dirname "$data_link")"
+if [ ! -L "$binary_link" ]; then ln -s "$binary" "$binary_link"; fi
+if [ ! -L "$data_link" ]; then ln -s "$data" "$data_link"; fi
+record_status 'OBS helper installed. Restart OBS after installing or updating Companion to load the matching helper.'

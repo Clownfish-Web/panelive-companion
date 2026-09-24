@@ -200,10 +200,10 @@ else()
   if(NOT CMAKE_LIBRARY_ARCHITECTURE)
     message(FATAL_ERROR "Linux OBS plugin packaging requires a library architecture")
   endif()
-  set(OBS_PLUGIN_BINARY_DESTINATION
-    "${CMAKE_INSTALL_LIBDIR}/${CMAKE_LIBRARY_ARCHITECTURE}/obs-plugins")
-  set(OBS_PLUGIN_DATA_DESTINATION
-    "${CMAKE_INSTALL_DATADIR}/obs/obs-plugins/${OBS_PLUGIN_PACKAGE_ID}")
+  # Ship the helper with Companion, outside OBS's search path until the installer
+  # has verified the native OBS version and the helper's runtime libraries.
+  set(OBS_PLUGIN_BINARY_DESTINATION "${CMAKE_INSTALL_LIBDIR}/panelive-companion/obs-plugin")
+  set(OBS_PLUGIN_DATA_DESTINATION "${CMAKE_INSTALL_DATADIR}/panelive-companion/obs-plugin/data")
 endif()
 install(TARGETS panelive-companion-obs-plugin
   LIBRARY DESTINATION "${OBS_PLUGIN_BINARY_DESTINATION}" COMPONENT OBSPlugin

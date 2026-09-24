@@ -1,0 +1,7 @@
+set(checksums "")
+foreach(package IN LISTS CPACK_PACKAGE_FILES)
+  file(SHA256 "${package}" digest)
+  get_filename_component(filename "${package}" NAME)
+  string(APPEND checksums "${digest}  ${filename}\n")
+endforeach()
+file(WRITE "${CPACK_PACKAGE_DIRECTORY}/SHA256SUMS-linux" "${checksums}")

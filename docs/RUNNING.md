@@ -101,25 +101,34 @@ notes must state their signing/notarization status.
 
 ## Linux
 
+Use the same amd64 `.deb` installer on **Ubuntu 22.04, 24.04 or 26.04**, or
+**Debian 12 or 13**, with current distribution updates. See
+[Linux support and validation](LINUX_SUPPORT.md) for requirements and test scope.
+
 Install the Companion package, replacing the filename with your artifact:
 
 ```sh
-sudo apt install ./out/package/linux/panelive-companion_0.1.0~beta.1_amd64.deb
+sudo apt install ./panelive-companion-0.1.0-beta.1-linux-x64.deb
 panelive-companion --open-management
 ```
 
-For OBS monitoring, also install the separate helper package. It requires native
-OBS 30 or newer with Qt 6; stock OBS on Ubuntu 22.04 and Debian 12 is too old.
-Flatpak/Snap OBS is not supported by this helper package. Close OBS before installing
-or upgrading the helper and restart it afterward:
+The installer **includes the matching OBS helper**. Close OBS before installing or
+upgrading Companion, then restart OBS. Setup automatically activates the helper for
+native OBS 30 or newer with Qt 6 and the `libobs.so.30` ABI. Stock OBS on Ubuntu 22.04
+and Debian 12 is too old; Flatpak/Snap OBS cannot load this native helper.
 
-```sh
-sudo apt install ./out/package/linux/panelive-companion-obs-plugin_0.1.0~beta.1_amd64.deb
-```
+If OBS is absent or incompatible, installation still completes for teleprompter use.
+The **Adapters** page explains helper setup status. Installing, upgrading or repairing
+native OBS through APT automatically rechecks setup; removing OBS deactivates the
+helper. Companion updates replace the bundled helper with its matching version.
+APT removes the obsolete separate `panelive-companion-obs-plugin` package during
+migration to this installer. Manually installed helpers are preserved; remove a
+conflicting older copy and reinstall Companion if setup reports a conflict.
 
-The helper installs under `/usr/lib/x86_64-linux-gnu/obs-plugins/`, with data under
-`/usr/share/obs/obs-plugins/`. The Companion package supplies the application launcher
-and supports standalone teleprompter use without OBS. Use a graphical user session
+The helper payload lives under `/usr/lib/panelive-companion/obs-plugin/`. Setup exposes
+it to compatible OBS through links under `/usr/lib/x86_64-linux-gnu/obs-plugins/` and
+`/usr/share/obs/obs-plugins/`. Uninstall removes the bundled helper and its managed
+links while preserving user profiles. Use a graphical user session
 with session D-Bus, an unlocked Secret Service keyring and Avahi available for discovery.
 The Companion uses the user's XDG state directory. Run it as your normal user,
 not through `sudo`.
@@ -197,12 +206,12 @@ replacing binaries. Closing a management window is not a reliable way to stop th
 ## Package identity
 
 The software is named **PaneLive Companion**. Packages, executable names, install/data
-directories and service identity use `panelive-companion`. The OBS helper remains a
-separate `panelive-companion-obs-plugin` package. Existing profiles from the earlier
+directories and service identity use `panelive-companion`. The OBS helper binary is
+named `panelive-companion-obs-plugin` and is bundled in the Linux installer.
+Existing profiles from the earlier
 Companion package identity are not automatically migrated; configure and pair the new
 installation before evaluation.
 
-The OBS module also displays **PaneLive Companion**. Install the Companion and
-`panelive-companion-obs-plugin` from the same release: their shared-memory names
-are coordinated. Remove an older helper before installing this renamed plugin to
-avoid loading two helpers in OBS.
+The OBS module also displays **PaneLive Companion**. The installer keeps Companion
+and its helper on the same release because their shared-memory names are coordinated.
+Remove manually installed older helper copies to avoid loading two helpers in OBS.

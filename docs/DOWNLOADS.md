@@ -7,7 +7,8 @@ artifacts, supported backend versions and signing status. If no matching asset i
 use the [source build manual](BUILDING.md); availability is not implied by a build preset.
 GitHub's automatic source ZIP/tarball downloads are source code, not installers.
 
-Each binary release should include a `SHA256SUMS` file (or an adjacent `.sha256` file)
+Each binary release should include a platform checksum file such as `SHA256SUMS-linux`
+(or an adjacent `.sha256` file)
 covering the exact downloadable bytes. Download the installer and checksum from the
 same release. Do not substitute hashes of an extracted executable for the installer hash.
 
@@ -38,8 +39,15 @@ shasum -a 256 -c SHA256SUMS
 
 ## Linux
 
+The same **amd64 `.deb` installer** supports the verified Ubuntu 22.04, 24.04 and
+26.04, and Debian 12 and 13 desktop targets. Download
+`panelive-companion-0.1.0-beta.1-linux-x64.deb` and `SHA256SUMS-linux`.
+The installer contains Companion and its matching OBS helper; no second helper
+download is needed. See [Linux support and validation](LINUX_SUPPORT.md) for native
+OBS requirements and automatic setup behavior.
+
 ```sh
-sha256sum --check SHA256SUMS
+sha256sum --check SHA256SUMS-linux
 ```
 
 These commands report missing files if you downloaded only some of the manifest's

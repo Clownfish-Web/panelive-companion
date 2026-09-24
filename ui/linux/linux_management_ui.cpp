@@ -243,6 +243,8 @@ private:
 
   void on_activate()
   {
+    if (stopping_)
+      return;
     if (window_)
     {
       window_->activate();
@@ -290,8 +292,10 @@ private:
     }
     if (stopping)
     {
+      stopping_ = true;
       approvals_->close();
       stop_dispatch();
+      status_item_.reset();
       refresh_source_ = 0;
       if (window_)
         window_->close();
@@ -313,6 +317,7 @@ private:
   ManagementPage initial_page_ = ManagementPage::clients;
   ManagementInterfaceMode interface_mode_ = ManagementInterfaceMode::basic;
   bool show_on_start_ = false;
+  bool stopping_ = false;
   std::function<void(ManagementInterfaceMode)> interface_mode_changed_;
   ManagementUiCallbacks callbacks_;
   ShutdownSignal& shutdown_;

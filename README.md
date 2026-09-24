@@ -1,10 +1,6 @@
 # PaneLive Companion
 
-**Secure mobile production control and monitoring for OBS Studio, vMix, and Streamlabs Desktop.**
-
-Package and executable name: **`panelive-companion`**.
-The OBS plugin also displays **PaneLive Companion**; its binary and package name is
-**`panelive-companion-obs-plugin`**.
+**Native Windows, macOS and Linux apps for secure mobile production control and monitoring.**
 
 PaneLive Companion connects OBS Studio, vMix, and Streamlabs Desktop to paired Android
 and iOS production controllers through an authenticated HTTPS/WebSocket API. Available
@@ -49,20 +45,50 @@ products and are not included here.
   production countdown event relay, and optional remote tally publication. Remote
   publication depends on a compatible hosted service; the service is not bundled.
 
-## Platform and backend scope
+## Supported platforms
 
-The initial public version is **0.1.0-beta.1**, marked as a **prerelease**.
-The `0.x` series is for initial development, and the `beta.1` suffix identifies the
-first beta under [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-The version is pinned in `vcpkg.json`; GitHub release metadata uses tag `v0.1.0-beta.1`
-and `prerelease: true`. Source availability does not imply that an
-installer has been published or validated for every platform.
+PaneLive Companion supports **Windows, macOS and Linux**, with a native desktop
+interface on each platform. The standalone teleprompter is available on all three.
 
-| Platform | Native frontend | Source build scope |
+| Platform | Native interface | Production integrations |
 | --- | --- | --- |
-| Windows x64 | WinUI 3 / notification area | OBS, vMix, Streamlabs, teleprompter |
-| macOS 13+ arm64 / x86_64 | SwiftUI / AppKit | OBS, Streamlabs, teleprompter; evaluation builds |
-| Linux x86_64 (Ubuntu) | GTK4 / libadwaita | OBS and teleprompter; Debian packaging |
+| **Windows 10 / 11**, x64 | WinUI 3 / notification area | OBS Studio, vMix, Streamlabs Desktop |
+| **macOS 13 or later**, Apple Silicon and Intel | SwiftUI / AppKit | OBS Studio, Streamlabs Desktop |
+| **Linux**, Ubuntu and Debian, x86_64 / amd64 | GTK4 / Libadwaita | OBS Studio |
+
+The current version is **0.1.0-beta.1**, a **prerelease**. Available installers,
+architectures and signing status are listed in [GitHub Releases](https://github.com/Clownfish-Web/panelive-companion/releases).
+macOS uses separate Apple Silicon and Intel builds. See the
+[build manual](docs/BUILDING.md) for local evaluation builds on each platform.
+
+### Supported Linux distributions
+
+**One `.deb` installer works across all of these verified distributions:**
+
+| Distribution | Supported versions |
+| --- | --- |
+| **Ubuntu** | **22.04, 24.04, 26.04** |
+| **Debian** | **12, 13** |
+
+These x86_64 desktop targets passed installation, GUI and HTTPS startup, autostart,
+removal and reinstall checks using the **same installer**, built on Ubuntu 22.04.
+Ubuntu 24.04 was also verified on a native desktop. Use current distribution updates
+and install with `apt` so the required desktop libraries are resolved automatically.
+
+Other Ubuntu/Debian derivatives and newer releases may work when they provide the
+required libraries, but are not yet included in the verified support list.
+See [Linux support and validation](docs/LINUX_SUPPORT.md) for requirements and test scope,
+including the Linux 5.15 kernel baseline.
+
+The Linux installer **includes the matching OBS helper** and sets it up automatically
+for compatible native **OBS 30 or newer** with Qt 6. If OBS is absent or incompatible,
+the teleprompter remains usable and the Adapters page explains the OBS requirement.
+Installing or upgrading OBS later automatically rechecks helper setup. Ubuntu 22.04
+and Debian 12 need a newer OBS package than their stock repositories provide.
+Flatpak/Snap OBS cannot load this native helper.
+See [Linux installation](docs/RUNNING.md#linux).
+
+### Backend availability
 
 The OBS helper must match the architecture and OBS/Qt development inputs described
 in the [build manual](docs/BUILDING.md). Streamlabs currently provides control and
@@ -78,7 +104,8 @@ validated targets.
 2. Start PaneLive Companion and open **Adapters** in management to configure OBS Studio,
    vMix, or Streamlabs Desktop. Follow the [backend setup instructions](docs/RUNNING.md)
    for your chosen app, or use the standalone teleprompter without a production app.
-3. For OBS, install the matching helper while OBS is closed, then enable
+3. For OBS, close OBS while installing Companion so its matching helper can be set up,
+   then restart OBS and enable
    **Tools > WebSocket Server Settings > Enable WebSocket server** with authentication.
    Run Companion in the same user session as OBS and configure its address, port
    (normally `4455`) and password in the OBS adapter.
@@ -105,6 +132,10 @@ The Companion does not link to OBS. Its helper runs inside OBS and communicates 
 versioned local IPC. This public source tree includes runtime and build inputs plus
 evaluation manuals; private work notes, test harnesses, IDE settings and build caches
 are omitted.
+
+The Companion package and executable are named **`panelive-companion`**. The OBS
+helper is named **`panelive-companion-obs-plugin`** and displays **PaneLive Companion**
+inside OBS.
 
 ## Licenses and acknowledgments
 

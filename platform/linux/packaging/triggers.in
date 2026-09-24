@@ -1,0 +1,4 @@
+# Reconcile the dormant helper when OBS is added, removed, upgraded or repaired.
+interest-noawait /usr/bin/obs
+interest-noawait /usr/lib/@CMAKE_LIBRARY_ARCHITECTURE@
+interest-noawait /lib/@CMAKE_LIBRARY_ARCHITECTURE@

@@ -17,8 +17,9 @@
       Windows, and Streamlabs Desktop on Windows and macOS, with features varying by backend.
     </p>
     <p>
-      The Linux version supports OBS Studio and the standalone teleprompter. A separately
-      installed OBS helper provides Program and Studio Preview monitoring over WebRTC.
+      The Linux version supports OBS Studio and the standalone teleprompter. The installer
+      includes the matching OBS helper and sets it up automatically for compatible native
+      OBS installations, providing Program and Studio Preview monitoring over WebRTC.
     </p>
   </description>
   <launchable type="desktop-id">com.clownfishweb.PaneLiveCompanion.desktop</launchable>

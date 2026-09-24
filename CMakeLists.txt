@@ -894,10 +894,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
     DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}")
   install(FILES platform/linux/packaging/obs-plugin-copyright
-    DESTINATION "share/doc/panelive-companion-obs-plugin"
-    RENAME copyright COMPONENT OBSPlugin)
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
-    DESTINATION "share/doc/panelive-companion-obs-plugin" COMPONENT OBSPlugin)
+    DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}"
+    RENAME obs-plugin-copyright COMPONENT OBSPlugin)
   configure_file(platform/linux/packaging/panelive-companion.1
     "${CMAKE_CURRENT_BINARY_DIR}/panelive-companion.1" COPYONLY)
   execute_process(
@@ -965,7 +963,7 @@ install(FILES README.md
   DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}")
 install(DIRECTORY docs/ DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/docs")
 install(DIRECTORY releases/ DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/releases"
-  PATTERN "SHA256SUMS" EXCLUDE)
+  PATTERN "SHA256SUMS*" EXCLUDE)
 install(FILES obs-plugin/LICENSE
   DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/obs-plugin")
 install(FILES packaging/macos/INSTALL_OBS_PLUGIN_MACOS.md
@@ -1026,30 +1024,40 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(CPACK_PACKAGE_CONTACT "ClownfishWeb <support@clownfishweb.com>")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Secure mobile production control and monitoring")
-  set(CPACK_PACKAGE_DESCRIPTION "PaneLive Companion connects paired mobile clients to production software.\n This Linux package supports OBS Studio and a standalone teleprompter.\n The native GTK management window controls pairing and local approvals.\n A separately licensed OBS helper delivers Program and Studio Preview frames.")
+  set(CPACK_PACKAGE_DESCRIPTION "PaneLive Companion connects paired mobile clients to production software.\n This Linux package supports OBS Studio and a standalone teleprompter.\n The native GTK management window controls pairing and local approvals.\n Includes the matching OBS helper, activated automatically for compatible\n native OBS installations.")
   set(CPACK_PACKAGE_VERSION "${STUDIO_REMOTE_BUILD_VERSION}")
   set(CPACK_DEBIAN_PACKAGE_VERSION "${STUDIO_REMOTE_DEBIAN_VERSION}")
-  set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
   set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE amd64)
   set(CPACK_DEBIAN_PACKAGE_SECTION video)
   set(CPACK_DEBIAN_PACKAGE_PRIORITY optional)
-  # Derive native ABI requirements from the actual payload, including the separately licensed
-  # OBS module. Hard-coded libc/JPEG package names misrepresent cross-distribution compatibility.
-  set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-  set(CPACK_DEB_COMPONENT_INSTALL ON)
-  set(CPACK_COMPONENTS_ALL Unspecified OBSPlugin)
-  set(CPACK_DEBIAN_UNSPECIFIED_PACKAGE_NAME "panelive-companion")
-  set(CPACK_DEBIAN_OBSPLUGIN_PACKAGE_NAME "panelive-companion-obs-plugin")
-  set(CPACK_DEBIAN_OBSPLUGIN_PACKAGE_DEPENDS "obs-studio (>= 30.0)")
-  set(CPACK_COMPONENT_UNSPECIFIED_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
-  set(CPACK_COMPONENT_OBSPLUGIN_DESCRIPTION
-    "OBS helper for PaneLive Companion\n Separately licensed GPL-2.0-or-later OBS module publishing headless media\n through owner-restricted local IPC.")
-  set(CPACK_DEBIAN_UNSPECIFIED_PACKAGE_SUGGESTS
-    "panelive-companion-obs-plugin (= ${STUDIO_REMOTE_DEBIAN_VERSION})")
-  set(CPACK_DEBIAN_UNSPECIFIED_PACKAGE_RECOMMENDS
+  set(CPACK_DEBIAN_FILE_NAME "panelive-companion-${STUDIO_REMOTE_BUILD_VERSION}-linux-x64.deb")
+  set(CPACK_DEB_COMPONENT_INSTALL OFF)
+  # Scan the two binaries independently at packaging time: Companion's libraries
+  # are required; OBS integration libraries are optional until helper activation.
+  # The installer verifies all helper relocations before exposing it to OBS.
+  set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+  configure_file(platform/linux/packaging/dependencies.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/linux-deb-dependencies.cmake" @ONLY)
+  set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_CURRENT_BINARY_DIR}/linux-deb-dependencies.cmake")
+  set(CPACK_DEBIAN_PACKAGE_CONFLICTS "panelive-companion-obs-plugin")
+  set(CPACK_DEBIAN_PACKAGE_REPLACES "panelive-companion-obs-plugin")
+  set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
     "gnome-keyring, dbus-user-session, avahi-daemon")
-  set(CPACK_DEBIAN_OBSPLUGIN_PACKAGE_DESCRIPTION
-    "${CPACK_COMPONENT_OBSPLUGIN_DESCRIPTION}")
+  set(STUDIO_REMOTE_LINUX_HELPER_CONTROL_DIR "${CMAKE_CURRENT_BINARY_DIR}/linux-deb-control")
+  file(MAKE_DIRECTORY "${STUDIO_REMOTE_LINUX_HELPER_CONTROL_DIR}")
+  foreach(control_file postinst prerm postrm triggers)
+    configure_file("platform/linux/packaging/${control_file}.in"
+      "${STUDIO_REMOTE_LINUX_HELPER_CONTROL_DIR}/${control_file}" @ONLY)
+    list(APPEND CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
+      "${STUDIO_REMOTE_LINUX_HELPER_CONTROL_DIR}/${control_file}")
+  endforeach()
+  configure_file(platform/linux/packaging/configure-obs-helper.in
+    "${CMAKE_CURRENT_BINARY_DIR}/configure-obs-helper" @ONLY)
+  install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/configure-obs-helper"
+    DESTINATION lib/panelive-companion)
+  configure_file(platform/linux/packaging/checksums.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/linux-deb-checksums.cmake" @ONLY)
+  set(CPACK_POST_BUILD_SCRIPTS "${CMAKE_CURRENT_BINARY_DIR}/linux-deb-checksums.cmake")
   set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
   set(CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE

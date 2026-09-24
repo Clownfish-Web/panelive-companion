@@ -101,6 +101,8 @@ LinuxManagementWindow::~LinuxManagementWindow()
 
 void LinuxManagementWindow::activate()
 {
+  if (!window_)
+    return;
   controller_.refresh();
   redraw();
   gtk_window_present(window_);
@@ -165,6 +167,8 @@ void LinuxManagementWindow::cancel_global_setting_change(std::string_view device
 
 void LinuxManagementWindow::redraw()
 {
+  if (!window_)
+    return;
   current_page_ = visible_management_page(controller_.state().interface_mode, current_page_);
   update_pairing_preview();
   rebuild_navigation();
