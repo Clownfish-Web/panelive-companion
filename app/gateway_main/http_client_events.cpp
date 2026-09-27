@@ -29,6 +29,25 @@ std::string next_identification_code(std::uint32_t& sequence,
 }
 } // namespace
 
+void GatewayHttpServer::reply_websocket_rate_limited(mg_connection* connection,
+                                                     std::uint32_t retry_after_ms) const
+{
+  http_responses_.fetch_add(1, std::memory_order_relaxed);
+  http_client_errors_.fetch_add(1, std::memory_order_relaxed);
+  const auto body =
+      json{{"error", "rate_limited"}, {"scope", "websocket"}, {"retryAfterMs", retry_after_ms}}
+          .dump();
+  // CivetWeb marks the request as WebSocket before admission and its buffered HTTP response
+  // functions reject that protocol. The upgrade callback must write this HTTP/1.1 reply directly.
+  const auto header = "HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n"
+                      "Content-Type: application/json\r\nCache-Control: no-store\r\nRetry-After: " +
+                      std::to_string(std::max(1U, (retry_after_ms + 999U) / 1'000U)) +
+                      "\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n";
+  const auto response = header + body;
+  if (mg_write(connection, response.data(), response.size()) != static_cast<int>(response.size()))
+    http_server_errors_.fetch_add(1, std::memory_order_relaxed);
+}
+
 void GatewayHttpServer::identify_client(std::string_view device_id,
                                         ClientIdentificationOptions options)
 {

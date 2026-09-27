@@ -18,6 +18,7 @@ set(PANELIVE_COMPANION_PACKAGE_ID "panelive-companion")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
+include(LinuxDistribution)
 include(Dependencies)
 include(RemoteTallyService)
 if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -91,6 +92,7 @@ add_library(studio_remote_core STATIC
   core/teleprompter/script_catalog.cpp
   core/teleprompter/memory_session_repository.cpp
   core/transport/request_admission.cpp
+  core/transport/client_frame_budget.cpp
   core/configuration/stored_password.cpp
   core/discovery/lan_address_selection.cpp
   core/discovery/companion_service_record.cpp
@@ -106,6 +108,7 @@ add_library(studio_remote_core STATIC
   core/media/audio_pipeline_hardening.cpp
   core/media/audio_playout_controller.cpp
   core/media/thumbnail_encoding.cpp
+  core/media/video_rtp_timeline.cpp
   core/ipc/audio_monitor_protocol.cpp
   core/ipc/audio_monitor_reader.cpp
   core/ipc/source_thumbnail_protocol.cpp
@@ -183,11 +186,13 @@ add_library(studio_remote_transport STATIC
   core/transport/libdatachannel_transport.cpp
   platform/shared/media/vp8_video_encoder.cpp
   core/transport/rtp_ssrc_allocator.cpp
+  core/transport/sdp_offer_limits.cpp
   core/transport/webrtc_audio_encoder.cpp
   core/transport/webrtc_audio_master.cpp
   core/transport/webrtc_audio_sender.cpp
   core/transport/webrtc_offer.cpp
   core/transport/webrtc_pending_offer.cpp
+  core/transport/webrtc_remote_offer.cpp
   core/transport/vp8_rtp_packetizer.cpp)
 target_include_directories(studio_remote_transport PUBLIC include PRIVATE core/transport)
 target_link_libraries(studio_remote_transport PUBLIC studio_remote_core LibDataChannel::LibDataChannel
@@ -199,6 +204,7 @@ add_library(studio_remote_application STATIC
   ui/shared/management_status_snapshot_builder.cpp
   ui/shared/management_status_rows.cpp
   ui/shared/management_clients.cpp
+  ui/shared/management_client_notifications.cpp
   ui/shared/management_adapter_rows.cpp
   core/application/audio_mixer_roster.cpp
   core/application/management_controller.cpp
@@ -253,6 +259,7 @@ studio_remote_set_warnings(studio_remote_video_capture_worker)
 
 if(WIN32)
   add_library(studio_remote_platform_windows STATIC
+    platform/windows/ipc/windows_ipc_mapping.cpp
     platform/windows/capture/windows_audio_diagnostic_player.cpp
     platform/windows/capture/windows_audio_rate_adjustment.cpp
     platform/windows/capture/windows_audio_monitor.cpp
@@ -270,6 +277,7 @@ if(WIN32)
     platform/windows/credentials/windows_credential_store.cpp
     platform/windows/credentials/windows_crypto.cpp
     platform/windows/credentials/windows_tls_identity.cpp
+    platform/windows/credentials/windows_private_tls_storage.cpp
     platform/windows/platform_services/windows_dns_sd.cpp
     platform/windows/platform_services/windows_host_diagnostics.cpp
     platform/windows/platform_services/windows_hotkey_executor.cpp
@@ -490,6 +498,7 @@ elseif(APPLE)
     studio_remote_platform_macos "-framework Foundation")
   studio_remote_set_warnings(studio_remote_macos_installer_record)
   add_library(studio_remote_macos_management_bridge STATIC
+    ui/macos/macos_client_notifications.mm
     ui/macos/macos_tray_icon.mm
     ui/macos/management_worker.mm
     ui/macos/management_pairing.mm
@@ -500,6 +509,18 @@ elseif(APPLE)
     ui/macos/management_teleprompter_commands.mm
     ui/macos/management_presentation.mm)
   target_sources(studio_remote_macos_management_bridge PRIVATE ui/macos/management_branding.mm)
+  set(STUDIO_REMOTE_MACOS_NAVIGATION_ARTWORK
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/macos/navigation_artwork.hpp")
+  add_custom_command(OUTPUT "${STUDIO_REMOTE_MACOS_NAVIGATION_ARTWORK}"
+    COMMAND "${CMAKE_COMMAND}"
+      "-DSOURCE_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}/ui/linux/icons"
+      "-DOUTPUT_FILE=${STUDIO_REMOTE_MACOS_NAVIGATION_ARTWORK}"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/resources/embed_navigation_artwork.cmake"
+    DEPENDS platform/macos/resources/embed_navigation_artwork.cmake
+      ui/linux/icons/dispatch-collapse-symbolic.svg ui/linux/icons/dispatch-expand-symbolic.svg
+    VERBATIM)
+  target_sources(studio_remote_macos_management_bridge PRIVATE
+    ui/macos/management_navigation_images.mm "${STUDIO_REMOTE_MACOS_NAVIGATION_ARTWORK}")
   set(STUDIO_REMOTE_MACOS_TRAY_ARTWORK
     "${CMAKE_CURRENT_BINARY_DIR}/generated/macos/companion_tray_artwork.hpp")
   add_custom_command(OUTPUT "${STUDIO_REMOTE_MACOS_TRAY_ARTWORK}"
@@ -519,7 +540,8 @@ elseif(APPLE)
     OBJCXX_STANDARD 20 OBJCXX_STANDARD_REQUIRED ON OBJCXX_EXTENSIONS OFF)
   target_compile_options(studio_remote_macos_management_bridge PRIVATE -fobjc-arc)
   target_link_libraries(studio_remote_macos_management_bridge PUBLIC studio_remote_application
-    PRIVATE studio_remote_pairing_qr "-framework Foundation" "-framework AppKit")
+    PRIVATE studio_remote_pairing_qr "-framework Foundation" "-framework AppKit"
+      "-framework UserNotifications")
   # Load the named-command Objective-C category from the static bridge archive.
   target_link_options(studio_remote_macos_management_bridge INTERFACE "LINKER:-ObjC")
   studio_remote_set_warnings(studio_remote_macos_management_bridge)
@@ -547,7 +569,10 @@ elseif(APPLE)
     ui/macos/ManagementPairingOverlay.swift
     ui/macos/ManagementAdaptersPage.swift
     ui/macos/ManagementNetworkPage.swift
-    ui/macos/ManagementClientsTable.swift
+    ui/macos/ManagementPageHeading.swift
+    ui/macos/ManagementClientsPage.swift
+    ui/macos/ManagementClientsRoster.swift
+    ui/macos/ManagementClientDetails.swift
     ui/macos/ManagementStatusPage.swift)
   set_target_properties(studio_remote_ui_macos PROPERTIES Swift_LANGUAGE_VERSION 6)
   file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated/macos")
@@ -573,12 +598,18 @@ elseif(APPLE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_package(PkgConfig REQUIRED)
   find_package(JPEG REQUIRED)
-  # Ubuntu and Debian use different libjpeg SONAMEs. Link the distro-provided archive so the
-  # same baseline-built Companion can run on both without installing a foreign JPEG package.
-  find_library(STUDIO_REMOTE_JPEG_ARCHIVE NAMES libjpeg.a REQUIRED)
-  find_file(STUDIO_REMOTE_JPEG_NOTICE copyright
-    PATHS /usr/share/doc/libjpeg-turbo8-dev /usr/share/doc/libjpeg62-turbo-dev
-    NO_DEFAULT_PATH REQUIRED)
+  if(STUDIO_REMOTE_LINUX_DISTRIBUTION STREQUAL "ARCH")
+    set(STUDIO_REMOTE_JPEG_LINK_TARGET JPEG::JPEG)
+    find_file(STUDIO_REMOTE_JPEG_NOTICE LICENSE.md
+      PATHS /usr/share/licenses/libjpeg-turbo NO_DEFAULT_PATH REQUIRED)
+  else()
+    # Ubuntu and Debian use different libjpeg SONAMEs. Their common binary uses the archive.
+    find_library(STUDIO_REMOTE_JPEG_ARCHIVE NAMES libjpeg.a REQUIRED)
+    set(STUDIO_REMOTE_JPEG_LINK_TARGET "${STUDIO_REMOTE_JPEG_ARCHIVE}")
+    find_file(STUDIO_REMOTE_JPEG_NOTICE copyright
+      PATHS /usr/share/doc/libjpeg-turbo8-dev /usr/share/doc/libjpeg62-turbo-dev
+      NO_DEFAULT_PATH REQUIRED)
+  endif()
   pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1>=0.20)
   pkg_check_modules(AVAHI REQUIRED IMPORTED_TARGET avahi-client>=0.8)
   pkg_check_modules(PULSE REQUIRED IMPORTED_TARGET libpulse>=15.0)
@@ -594,6 +625,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     platform/linux/capture/linux_thumbnail_encoder.cpp
     platform/linux/credentials/linux_credential_store.cpp
     platform/linux/credentials/linux_crypto.cpp
+    platform/linux/credentials/linux_tls_identity.cpp
+    platform/linux/credentials/linux_private_tls_storage.cpp
+    platform/linux/ipc/linux_ipc_mapping.cpp
+    platform/linux/capture/linux_video_frames.cpp
+    platform/linux/capture/linux_video_capture_demand.cpp
+    platform/linux/capture/linux_audio_monitor_ipc.cpp
+    platform/linux/capture/linux_thumbnail_mailbox.cpp
     platform/linux/platform_services/linux_config.cpp
     platform/linux/platform_services/linux_autostart.cpp
     platform/linux/platform_services/linux_network.cpp
@@ -606,10 +644,11 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     platform/linux/platform_services/linux_process.cpp)
   target_include_directories(studio_remote_platform_linux PUBLIC include)
   target_link_libraries(studio_remote_platform_linux PUBLIC
+    studio_remote_audio_monitor_worker studio_remote_video_capture_worker
     studio_remote_core
     studio_remote_obs_adapter
     LibDataChannel::LibDataChannel
-    "${STUDIO_REMOTE_JPEG_ARCHIVE}"
+    ${STUDIO_REMOTE_JPEG_LINK_TARGET}
     OpenSSL::Crypto
     PkgConfig::AVAHI
     PkgConfig::LIBSECRET
@@ -656,6 +695,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   find_program(GLIB_COMPILE_RESOURCES_EXECUTABLE glib-compile-resources REQUIRED)
   set(STUDIO_REMOTE_LINUX_UI_RESOURCES
     "${CMAKE_CURRENT_BINARY_DIR}/linux_management_resources.c")
+  # GLib emits one resource byte string, which can exceed C99's minimum supported length.
+  # GCC and Clang support it; keep the exception scoped to generated resource data only.
+  set_source_files_properties("${STUDIO_REMOTE_LINUX_UI_RESOURCES}" PROPERTIES
+    COMPILE_OPTIONS "$<$<COMPILE_LANG_AND_ID:C,GNU,Clang>:-Wno-overlength-strings>")
   add_custom_command(
     OUTPUT "${STUDIO_REMOTE_LINUX_UI_RESOURCES}"
     COMMAND "${GLIB_COMPILE_RESOURCES_EXECUTABLE}"
@@ -663,7 +706,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       --sourcedir=${CMAKE_CURRENT_SOURCE_DIR}
       --generate-source
       --manual-register
+      --dependency-file=${STUDIO_REMOTE_LINUX_UI_RESOURCES}.d
       --target=${STUDIO_REMOTE_LINUX_UI_RESOURCES}
+    DEPFILE "${STUDIO_REMOTE_LINUX_UI_RESOURCES}.d"
     DEPENDS
       ui/linux/linux_management_resources.xml
       platform/windows/resources/panelive-companion-32.png
@@ -671,10 +716,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     VERBATIM)
   add_library(studio_remote_ui_linux STATIC
     "${STUDIO_REMOTE_LINUX_UI_RESOURCES}"
+    ui/linux/linux_appearance.cpp
+    ui/linux/omarchy_palette.cpp
     ui/linux/linux_about_page.cpp
     ui/linux/linux_approval_dialogs.cpp
     ui/linux/linux_advanced_settings_page.cpp
     ui/linux/linux_clients_page.cpp
+    ui/linux/linux_clients_toolbar.cpp
     ui/linux/linux_teleprompter_page.cpp
     ui/linux/linux_teleprompter_editor.cpp
     ui/linux/linux_teleprompter_sharing.cpp
@@ -683,12 +731,16 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     ui/linux/linux_diagnostics_page.cpp
     ui/linux/linux_management_ui.cpp
     ui/linux/linux_management_window.cpp
+    ui/linux/linux_management_window_layout.cpp
     ui/linux/linux_management_pages_host.cpp
     ui/linux/linux_form_choices.cpp
     ui/linux/linux_pairing_qr.cpp
     ui/linux/linux_pairing_preview.cpp
     ui/linux/linux_status_page.cpp
     ui/linux/linux_status_notifier_item.cpp
+    ui/linux/linux_status_notifier_updates.cpp
+    ui/linux/linux_desktop_status.cpp
+    ui/linux/linux_notification_delivery.cpp
     ui/linux/linux_ui_helpers.cpp)
   target_include_directories(studio_remote_ui_linux PUBLIC ui/linux)
   target_compile_definitions(studio_remote_ui_linux PUBLIC
@@ -739,6 +791,8 @@ add_executable(panelive-companion
   app/gateway_main/client_event_protocol_registry.cpp
   app/gateway_main/countdown_event_protocol.cpp
   app/gateway_main/http_client_events.cpp
+  app/gateway_main/http_websocket_messages.cpp
+  app/gateway_main/http_authentication.cpp
   app/gateway_main/client_approval_callbacks.cpp
   app/gateway_main/adapter_gateway_controller.cpp
   app/gateway_main/listener_gateway_controller.cpp
@@ -826,6 +880,7 @@ set_target_properties(panelive-companion PROPERTIES
 if(APPLE)
   include(cmake/platform/MacosBundle.cmake)
   studio_remote_configure_macos_bundle(panelive-companion)
+  include(cmake/platform/MacosInstaller.cmake)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   target_link_options(panelive-companion PRIVATE
@@ -881,21 +936,25 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   install(FILES
     platform/linux/packaging/panelive-companion-autostart.desktop
     DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/autostart")
+  install(DIRECTORY ui/linux/omarchy-widget/
+    DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/omarchy-widget")
   find_program(GZIP_EXECUTABLE gzip REQUIRED)
-  configure_file(platform/linux/packaging/changelog
-    "${CMAKE_CURRENT_BINARY_DIR}/changelog" COPYONLY)
-  execute_process(
-    COMMAND "${GZIP_EXECUTABLE}" -9 -n -c "${CMAKE_CURRENT_BINARY_DIR}/changelog"
-    OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
-    COMMAND_ERROR_IS_FATAL ANY)
-  install(FILES platform/linux/packaging/debian-copyright
-    DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}"
-    RENAME copyright)
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
-    DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}")
-  install(FILES platform/linux/packaging/obs-plugin-copyright
-    DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}"
-    RENAME obs-plugin-copyright COMPONENT OBSPlugin)
+  if(STUDIO_REMOTE_LINUX_DISTRIBUTION STREQUAL "DEBIAN")
+    configure_file(platform/linux/packaging/changelog
+      "${CMAKE_CURRENT_BINARY_DIR}/changelog" COPYONLY)
+    execute_process(
+      COMMAND "${GZIP_EXECUTABLE}" -9 -n -c "${CMAKE_CURRENT_BINARY_DIR}/changelog"
+      OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
+      COMMAND_ERROR_IS_FATAL ANY)
+    install(FILES platform/linux/packaging/debian-copyright
+      DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}"
+      RENAME copyright)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/changelog.gz"
+      DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}")
+    install(FILES platform/linux/packaging/obs-plugin-copyright
+      DESTINATION "share/doc/${PANELIVE_COMPANION_PACKAGE_ID}"
+      RENAME obs-plugin-copyright COMPONENT OBSPlugin)
+  endif()
   configure_file(platform/linux/packaging/panelive-companion.1
     "${CMAKE_CURRENT_BINARY_DIR}/panelive-companion.1" COPYONLY)
   execute_process(
@@ -905,9 +964,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     COMMAND_ERROR_IS_FATAL ANY)
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/panelive-companion.1.gz"
     DESTINATION share/man/man1)
-  install(FILES platform/linux/packaging/lintian-overrides
-    DESTINATION "share/lintian/overrides"
-    RENAME "${PANELIVE_COMPANION_PACKAGE_ID}")
+  if(STUDIO_REMOTE_LINUX_DISTRIBUTION STREQUAL "DEBIAN")
+    install(FILES platform/linux/packaging/lintian-overrides
+      DESTINATION "share/lintian/overrides"
+      RENAME "${PANELIVE_COMPANION_PACKAGE_ID}")
+  endif()
 endif()
 if(WIN32 AND DEFINED VCPKG_INSTALLED_DIR)
   set(STUDIO_REMOTE_WINDOWS_RUNTIME_DIRECTORY
@@ -1016,7 +1077,8 @@ if(DEFINED VCPKG_INSTALLED_DIR)
   endforeach()
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   STUDIO_REMOTE_LINUX_DISTRIBUTION STREQUAL "DEBIAN")
   set(CPACK_GENERATOR DEB)
   set(CPACK_PACKAGE_NAME "${PANELIVE_COMPANION_PACKAGE_ID}")
   set(CPACK_DEBIAN_PACKAGE_NAME "${PANELIVE_COMPANION_PACKAGE_ID}")

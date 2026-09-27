@@ -4,6 +4,7 @@
 #include <studio_remote/obs/obs_event_subscriptions.hpp>
 #include <studio_remote/obs/obs_pending_requests.hpp>
 #include <studio_remote/obs/obs_protocol.hpp>
+#include <studio_remote/protocol/provider_json.hpp>
 #include <utility>
 
 namespace studio_remote
@@ -15,7 +16,15 @@ json envelope(std::string_view message)
 {
   if (message.size() > maximum_obs_message_bytes)
     throw std::runtime_error("OBS message exceeds the size limit");
-  auto value = json::parse(message, nullptr, false);
+  json value;
+  try
+  {
+    value = parse_provider_json_object(message, maximum_obs_message_bytes);
+  }
+  catch (const std::invalid_argument&)
+  {
+    throw std::runtime_error("OBS sent an invalid message envelope");
+  }
   if (value.is_discarded() || !value.is_object() || !value.contains("op") ||
       !value["op"].is_number_unsigned() || value["op"] > 255 || !value.contains("d") ||
       !value["d"].is_object())

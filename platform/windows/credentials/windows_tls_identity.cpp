@@ -1,6 +1,6 @@
 #include "windows_crypto.hpp"
 
-#include "../../shared/configuration/configuration_stream.hpp"
+#include "windows_private_tls_storage.hpp"
 
 #include <Windows.h>
 #include <openssl/buffer.h>
@@ -10,7 +10,6 @@
 #include <openssl/x509v3.h>
 
 #include <array>
-#include <fstream>
 #include <memory>
 #include <stdexcept>
 
@@ -56,16 +55,10 @@ Bio memory_bio()
   return result;
 }
 
-Bio read_pem(const std::filesystem::path& path)
+Bio read_pem(const PrivateTlsStorage& storage, const std::filesystem::path& path)
 {
-  constexpr std::uintmax_t maximum_size = 64 * 1024;
-  const auto size = std::filesystem::file_size(path);
-  require(size > 0 && size <= maximum_size, "Stored TLS identity has an invalid size");
-  SecretPem contents{std::string(static_cast<std::size_t>(size), '\0')};
-  std::ifstream stream(path, std::ios::binary);
-  stream.read(contents.value.data(), static_cast<std::streamsize>(size));
-  require(stream && stream.peek() == std::char_traits<char>::eof() && !stream.bad(),
-          "Could not read complete TLS identity");
+  SecretPem contents{storage.read(path)};
+  const auto size = contents.value.size();
   auto result = memory_bio();
   require(BIO_write(result.get(), contents.value.data(), static_cast<int>(size)) ==
               static_cast<int>(size),
@@ -73,15 +66,12 @@ Bio read_pem(const std::filesystem::path& path)
   return result;
 }
 
-void write_pem(const std::filesystem::path& path, BIO& buffer)
+void write_pem(const PrivateTlsStorage& storage, const std::filesystem::path& path, BIO& buffer)
 {
   char* bytes = nullptr;
   const auto count = BIO_get_mem_data(&buffer, &bytes);
   require(count > 0, "Could not encode TLS identity");
-  std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-  write_configuration_stream(stream, std::string_view(bytes, static_cast<std::size_t>(count)));
-  stream.close();
-  require(static_cast<bool>(stream), "Could not close TLS identity file");
+  storage.write_new(path, std::string_view(bytes, static_cast<std::size_t>(count)));
 }
 
 Key read_key(BIO& buffer)
@@ -204,19 +194,25 @@ Certificate create_certificate(EVP_PKEY& key, const std::string& common_name)
   return certificate;
 }
 
-void write_combined(const std::filesystem::path& path, X509& certificate, EVP_PKEY& key)
+void write_combined(const PrivateTlsStorage& storage,
+                    const std::filesystem::path& path,
+                    X509& certificate,
+                    EVP_PKEY& key)
 {
   auto buffer = memory_bio();
   require(PEM_write_bio_PrivateKey(buffer.get(), &key, nullptr, nullptr, 0, nullptr, nullptr) ==
                   1 &&
               PEM_write_bio_X509(buffer.get(), &certificate) == 1,
           "Could not encode TLS identity");
-  write_pem(path, *buffer);
+  write_pem(storage, path, *buffer);
 }
 
-void validate_combined(const std::filesystem::path& path, X509& certificate, EVP_PKEY& key)
+void validate_combined(const PrivateTlsStorage& storage,
+                       const std::filesystem::path& path,
+                       X509& certificate,
+                       EVP_PKEY& key)
 {
-  auto stored = read_pem(path);
+  auto stored = read_pem(storage, path);
   auto stored_key = read_key(*stored);
   auto stored_certificate = read_certificate(*stored);
   require(EVP_PKEY_eq(stored_key.get(), &key) == 1 &&
@@ -233,25 +229,28 @@ CertificateInfo ensure_self_signed_certificate(const std::filesystem::path& dire
           "TLS instance identifier is invalid");
   // Preserve the subject of existing Windows identities; changing it would invalidate saved pins.
   const std::string common_name = "OBS Mobile Companion " + std::string(instance_id);
-  std::filesystem::create_directories(directory);
+  const PrivateTlsStorage storage(directory);
   CertificateInfo info{
       directory / "gateway.crt", directory / "gateway.key", directory / "gateway.pem", {}};
-  const bool certificate_exists = std::filesystem::exists(info.certificate_path);
-  const bool key_exists = std::filesystem::exists(info.private_key_path);
-  const bool combined_exists = std::filesystem::exists(info.server_pem_path);
+  const bool certificate_exists =
+      std::filesystem::exists(std::filesystem::symlink_status(info.certificate_path));
+  const bool key_exists =
+      std::filesystem::exists(std::filesystem::symlink_status(info.private_key_path));
+  const bool combined_exists =
+      std::filesystem::exists(std::filesystem::symlink_status(info.server_pem_path));
   if (certificate_exists || key_exists || combined_exists)
   {
     require(certificate_exists && key_exists,
             "Stored TLS identity is incomplete; explicit recovery is required");
-    auto certificate_buffer = read_pem(info.certificate_path);
-    auto key_buffer = read_pem(info.private_key_path);
+    auto certificate_buffer = read_pem(storage, info.certificate_path);
+    auto key_buffer = read_pem(storage, info.private_key_path);
     auto certificate = read_certificate(*certificate_buffer);
     auto key = read_key(*key_buffer);
     validate_identity(*certificate, *key, common_name);
     if (combined_exists)
-      validate_combined(info.server_pem_path, *certificate, *key);
+      validate_combined(storage, info.server_pem_path, *certificate, *key);
     else
-      write_combined(info.server_pem_path, *certificate, *key);
+      write_combined(storage, info.server_pem_path, *certificate, *key);
     info.fingerprint = fingerprint_of(*certificate);
     return info;
   }
@@ -267,9 +266,9 @@ CertificateInfo ensure_self_signed_certificate(const std::filesystem::path& dire
   auto certificate_buffer = memory_bio();
   require(PEM_write_bio_X509(certificate_buffer.get(), certificate.get()) == 1,
           "Could not encode TLS certificate");
-  write_pem(info.private_key_path, *key_buffer);
-  write_pem(info.certificate_path, *certificate_buffer);
-  write_combined(info.server_pem_path, *certificate, *key);
+  write_pem(storage, info.private_key_path, *key_buffer);
+  write_pem(storage, info.certificate_path, *certificate_buffer);
+  write_combined(storage, info.server_pem_path, *certificate, *key);
   info.fingerprint = fingerprint_of(*certificate);
   return info;
 }

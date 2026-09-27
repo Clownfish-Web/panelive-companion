@@ -6,6 +6,7 @@
 #include "device_role_protocol.hpp"
 #include "generic_command_envelope.hpp"
 #include "hotkey_protocol.hpp"
+#include "http_authentication.hpp"
 #include "http_request_policy.hpp"
 #include "media_session_reset_protocol.hpp"
 #include "obs_configuration_protocol.hpp"
@@ -27,6 +28,7 @@
 #include <studio_remote/common/client_request_lifetime.hpp>
 #include <studio_remote/credentials/device_name.hpp>
 #include <studio_remote/credentials/storage_busy.hpp>
+#include <studio_remote/protocol/client_json.hpp>
 #include <studio_remote/transport/webrtc_offer.hpp>
 
 namespace studio_remote
@@ -34,6 +36,7 @@ namespace studio_remote
 namespace
 {
 constexpr std::size_t server_worker_threads = 64;
+static_assert(RequestAdmission::maximum_websocket_connections < server_worker_threads);
 
 struct HttpHeader
 {
@@ -95,27 +98,6 @@ void add_string_field_if_present(json& destination, const json& source, std::str
   const auto found = source.find(std::string(field));
   if (found != source.end() && found->is_string())
     destination[std::string(field)] = *found;
-}
-
-bool stored_credential_rejected(std::string_view reason)
-{
-  return reason == "malformed_bearer_token" || reason == "unknown_device_token" ||
-         reason == "device_revoked";
-}
-
-std::string_view authentication_required_action(std::string_view reason)
-{
-  if (reason == "missing_production_provider" || reason == "production_provider_mismatch")
-    return "select_paired_production_provider";
-  return stored_credential_rejected(reason) ? "repair_pairing" : "provide_credentials";
-}
-
-json authentication_failure_response(std::string_view reason)
-{
-  return {{"error", "unauthorized"},
-          {"reason", reason},
-          {"retryable", false},
-          {"requiredAction", authentication_required_action(reason)}};
 }
 
 bool terminal_tls_authentication_failure(std::string_view reason)
@@ -193,12 +175,35 @@ GatewayHttpServer::GatewayHttpServer(HttpConfig config,
       return;
     try
     {
-      // Failed handshakes skip the WebSocket close callback. Native close holds the connection
-      // mutex, so only retire pre-Ready bookkeeping here; established sockets use handleClose.
       std::lock_guard lock(self->sockets_mutex_);
       auto* socket = const_cast<mg_connection*>(connection);
       if (!self->sockets_.contains(socket))
         self->socket_devices_.erase(socket);
+    }
+    catch (...)
+    {
+      record_websocket_boundary_failure(self->endurance_log_, "connectionCleanupFailed", "unknown");
+    }
+  };
+  callbacks_.connection_closed = [](const mg_connection* connection) noexcept
+  {
+    auto* self = static_cast<GatewayHttpServer*>(
+        const_cast<void*>(civet_user_context(mg_get_context(connection))));
+    if (!self)
+      return;
+    try
+    {
+      // Failed handshakes skip the WebSocket close callback. Retire slots only after native TLS
+      // and socket cleanup; established event writers already drained in handleClose. No I/O here.
+      std::unique_ptr<RequestAdmission::RequestReservation> reservation;
+      std::lock_guard lock(self->sockets_mutex_);
+      auto* socket = const_cast<mg_connection*>(connection);
+      if (const auto found = self->websocket_reservations_.find(socket);
+          found != self->websocket_reservations_.end())
+      {
+        reservation = std::move(found->second);
+        self->websocket_reservations_.erase(found);
+      }
     }
     catch (const std::exception& error)
     {
@@ -453,6 +458,9 @@ void GatewayHttpServer::stop()
     }
   }
   server_.reset();
+  // Native close callbacks have finished; also release any incomplete-start bookkeeping.
+  std::lock_guard lock(sockets_mutex_);
+  websocket_reservations_.clear();
 }
 std::string GatewayHttpServer::uri(const mg_connection* connection) const
 {
@@ -463,7 +471,7 @@ json GatewayHttpServer::read_json(mg_connection* connection) const
 {
   auto info = mg_get_request_info(connection);
   long long length = info ? info->content_length : 0;
-  if (length < 0 || length > 1024 * 1024)
+  if (length < 0 || static_cast<std::uint64_t>(length) > maximum_client_json_bytes)
     throw std::runtime_error("invalid body length");
   std::string body(static_cast<size_t>(length), '\0');
   size_t offset = 0;
@@ -474,17 +482,7 @@ json GatewayHttpServer::read_json(mg_connection* connection) const
       throw std::runtime_error("incomplete request body");
     offset += count;
   }
-  return body.empty() ? json::object() : json::parse(body);
-}
-
-void GatewayHttpServer::reply_authentication_failure(mg_connection* connection,
-                                                     std::string_view reason)
-{
-  const auto admission = permit_public(connection, RequestScope::authentication);
-  if (admission.retry_after_ms)
-    reply_rate_limited(connection, "authentication", admission.retry_after_ms);
-  else
-    reply(connection, 401, authentication_failure_response(reason));
+  return body.empty() ? json::object() : parse_client_json_object(body);
 }
 
 ProviderSession& GatewayHttpServer::provider_session(const Device& device) const
@@ -537,11 +535,9 @@ json GatewayHttpServer::capabilities(const Device& device,
                                                     session.runtime->thumbnails_available(),
                                                     session.webrtc->audio_monitor_status(),
                                                     session.webrtc->audio_master_status());
-  if (device.production_provider == "obs")
+  if (device.production_provider == "obs" && remote_tallies_)
   {
-    const auto availability =
-        remote_tallies_ ? remote_tallies_->availability(device.id)
-                        : tally::PublicationAvailability{false, "remote-tally-unavailable"};
+    const auto availability = remote_tallies_->availability(device.id);
     value["features"]["remoteTally.publish"] = {
         {"version", 1},
         {"access", "observe"},
@@ -1338,64 +1334,6 @@ bool GatewayHttpServer::write_text(mg_connection* connection, std::string_view t
   websocket_frames_.transport_error();
   return false;
 }
-GatewayHttpServer::AuthorizationResult
-GatewayHttpServer::authorize(const mg_connection* c, std::string_view transport) const
-{
-  const auto record_rejection = [&](std::string_view reason)
-  {
-    if (endurance_log_ && endurance_log_->enabled())
-      endurance_log_->record(
-          "authentication",
-          "bearerRejected",
-          {{"transport", std::string(transport)},
-           {"route", uri(c)},
-           {"reason", std::string(reason)},
-           {"terminal", true},
-           {"retryable", false},
-           {"requiredAction", std::string(authentication_required_action(reason))}});
-  };
-  const char* header = mg_get_header(c, "Authorization");
-  if (!header)
-  {
-    record_rejection("missing_authorization_header");
-    return {{}, "missing_authorization_header"};
-  }
-  std::string_view value(header);
-  constexpr std::string_view prefix = "Bearer ";
-  if (!value.starts_with(prefix))
-  {
-    record_rejection("malformed_bearer_authorization");
-    return {{}, "malformed_bearer_authorization"};
-  }
-  const auto result = pairing_.authenticate_with_reason(value.substr(prefix.size()));
-  if (result.device)
-  {
-    const auto* provider_header = mg_get_header(c, "X-Production-Provider");
-    if (!provider_header || std::string_view(provider_header).empty())
-    {
-      record_rejection("missing_production_provider");
-      return {{}, "missing_production_provider"};
-    }
-    if (result.device->production_provider != provider_header)
-    {
-      record_rejection("production_provider_mismatch");
-      return {{}, "production_provider_mismatch"};
-    }
-    if (endurance_log_ && endurance_log_->enabled())
-      endurance_log_->record("authentication",
-                             "bearerAccepted",
-                             {{"transport", std::string(transport)},
-                              {"route", uri(c)},
-                              {"deviceId", result.device->id},
-                              {"role", role_name(result.device->role)},
-                              {"productionProvider", result.device->production_provider}});
-    return {result.device, {}};
-  }
-  const auto reason = authentication_diagnostics::bearer_failure_reason(result.failure);
-  record_rejection(reason);
-  return {{}, std::string(reason)};
-}
-
 int GatewayHttpServer::initialize_civet_tls(void* context, void* user_data) noexcept
 {
   auto* self =
@@ -1885,14 +1823,22 @@ bool GatewayHttpServer::handlePost(CivetServer*, mg_connection* c)
         reply(c, 401, authentication_failure_response(authorization.failure_reason));
       return true;
     }
-    const auto& device = *authorization.device;
-    const auto admission = permit_device(device, scope);
+    const auto admission = permit_device(*authorization.device, scope);
     if (admission.retry_after_ms)
     {
       reply_rate_limited(c, request_scope_name(scope), admission.retry_after_ms);
       return true;
     }
     auto body = read_json(c);
+    // The client controls how long body delivery takes. Do not carry the earlier credential
+    // snapshot across that wait into a privileged operation or an idempotent replay.
+    authorization = authorize(c, "http");
+    if (!authorization.device)
+    {
+      reply_authentication_failure(c, authorization.failure_reason);
+      return true;
+    }
+    const auto& device = *authorization.device;
     auto& selected_runtime = *provider_session(device).runtime;
     if (selected_runtime.obs().backend_info().kind == ProductionBackendKind::companion_teleprompter)
     {
@@ -2251,6 +2197,10 @@ bool GatewayHttpServer::handlePost(CivetServer*, mg_connection* c)
         }
         else if (*failure == MediaOfferFailure::transport_closed)
           reply(c, 400, {{"error", "WebRTC transport closed during negotiation"}});
+        else if (*failure == MediaOfferFailure::sdp_limits_exceeded)
+          reply(c, 400, {{"error", "invalid-sdp-limits"}});
+        else if (*failure == MediaOfferFailure::invalid_sdp)
+          reply(c, 400, {{"error", "invalid-sdp"}});
         else
           reply(c, 503, {{"error", "production-backend-unavailable"}});
         return true;
@@ -2321,15 +2271,17 @@ try
     return false;
   }
   const auto& device = *authorization.device;
-  if (const auto admission = permit_device(device, RequestScope::websocket);
-      admission.retry_after_ms)
+  auto admission = permit_device(device, RequestScope::websocket);
+  if (admission.retry_after_ms)
   {
     if (endurance_log_ && endurance_log_->enabled())
       endurance_log_->record(
           "websocket", "connectionRejected", {{"reason", "rateLimit"}, {"deviceId", device.id}});
+    reply_websocket_rate_limited(const_cast<mg_connection*>(c), admission.retry_after_ms);
     return false;
   }
   std::lock_guard lock(sockets_mutex_);
+  websocket_reservations_.emplace(const_cast<mg_connection*>(c), std::move(admission.reservation));
   socket_devices_[const_cast<mg_connection*>(c)] = device;
   if (endurance_log_ && endurance_log_->enabled())
     endurance_log_->record("websocket",
@@ -2342,6 +2294,16 @@ catch (const CredentialStorageBusy&)
   reply(const_cast<mg_connection*>(c),
         503,
         {{"error", "credential-storage-unavailable"}, {"retryable", true}});
+  return false;
+}
+catch (const std::exception&)
+{
+  record_websocket_boundary_failure(endurance_log_, "connectionAdmissionFailed", "internal-error");
+  return false;
+}
+catch (...)
+{
+  record_websocket_boundary_failure(endurance_log_, "connectionAdmissionFailed", "unknown");
   return false;
 }
 void GatewayHttpServer::handleReadyState(CivetServer*, mg_connection* c)
@@ -2425,6 +2387,22 @@ void GatewayHttpServer::handleReadyState(CivetServer*, mg_connection* c)
 bool GatewayHttpServer::handleData(
     CivetServer*, mg_connection* c, int bits, char* data, size_t length)
 {
+  auto* event_connection = static_cast<ClientEventConnection*>(mg_get_user_connection_data(c));
+  // The native reader owns this borrowed channel until handleClose. Reject buffered input after
+  // revocation or delivery failure before parsing, replying to pings, or dispatching commands.
+  if (!event_connection || !event_connection->ready())
+    return false;
+  // A Close is already terminal. Bound every other frame before parsing or Ping diagnostics,
+  // using receive-thread-local credits so notifications still bypass application mutexes.
+  if ((bits & 0x0f) != MG_WEBSOCKET_OPCODE_CONNECTION_CLOSE &&
+      !event_connection->admit_frame(length, Clock::now()))
+  {
+    event_connection->revoke();
+    constexpr std::string_view payload = "\x03\xf0"
+                                         "Client frame budget exceeded";
+    mg_websocket_write(c, MG_WEBSOCKET_OPCODE_CONNECTION_CLOSE, payload.data(), payload.size());
+    return false;
+  }
   const auto disposition = websocket_frames_.route(
       bits,
       std::string_view(data, length),
@@ -2436,54 +2414,7 @@ bool GatewayHttpServer::handleData(
     return true;
   try
   {
-    auto* event_connection = static_cast<ClientEventConnection*>(mg_get_user_connection_data(c));
-    // Preserve ordinary command limits. Event handling precedes diagnostic/socket/command locks.
-    if (length > 1024 * 1024)
-      return false;
-    auto value = json::parse(std::string_view(data, length));
-    if (client_event_protocols_.recognizes(value))
-    {
-      if (event_connection)
-        event_connection->submit(length > maximum_client_event_bytes
-                                     ? rejected_client_event("event-too-large")
-                                     : *client_event_protocols_.decode(value));
-      return true;
-    }
-    if (endurance_log_ && endurance_log_->enabled())
-      endurance_log_->record("websocket",
-                             "applicationMessage",
-                             {{"type", value.value("type", "")}, {"bytes", length}});
-    if (value.value("type", "") == "resync")
-    {
-      std::optional<Device> device;
-      {
-        std::lock_guard lock(sockets_mutex_);
-        if (const auto found = socket_devices_.find(c); found != socket_devices_.end())
-          device = found->second;
-      }
-      if (device)
-        publish_replacements(*device);
-    }
-    else if (value.value("type", "") == "command")
-    {
-      std::optional<Device> device;
-      {
-        std::lock_guard lock(sockets_mutex_);
-        auto found = socket_devices_.find(c);
-        if (found != socket_devices_.end())
-          device = found->second;
-      }
-      if (device)
-      {
-        auto envelope = value;
-        envelope.erase("type");
-        const auto outcome = execute_generic_command(*device, envelope);
-        std::lock_guard lock(sockets_mutex_);
-        if (auto* channel = static_cast<ClientEventConnection*>(mg_get_user_connection_data(c)))
-          channel->deliver(std::make_shared<const std::string>(outcome.body.dump()),
-                           ClientDeliveryPriority::control);
-      }
-    }
+    handle_websocket_text(c, *event_connection, std::string_view(data, length));
   }
   catch (const std::exception&)
   {
@@ -2780,10 +2711,12 @@ json GatewayHttpServer::diagnostics() const
   const auto websocket = websocket_frames_.diagnostics();
   std::size_t authenticated_sockets = 0;
   std::size_t open_sockets = 0;
+  std::size_t reserved_sockets = 0;
   {
     std::lock_guard lock(sockets_mutex_);
     authenticated_sockets = socket_devices_.size();
     open_sockets = sockets_.size();
+    reserved_sockets = websocket_reservations_.size();
   }
   return {
       {"httpRequests", http_requests_.load(std::memory_order_relaxed)},
@@ -2794,6 +2727,7 @@ json GatewayHttpServer::diagnostics() const
       {"httpServerErrors", http_server_errors_.load(std::memory_order_relaxed)},
       {"openWebSockets", open_sockets},
       {"authenticatedWebSockets", authenticated_sockets},
+      {"reservedWebSockets", reserved_sockets},
       {"websocket",
        {{"connectionsOpened", websocket.connections_opened},
         {"connectionsClosed", websocket.connections_closed},

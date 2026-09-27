@@ -1,0 +1,84 @@
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -18560,8 +18560,58 @@
+                          {"wss://", 6, 443},
+                          {NULL, 0, 0}};
+ 
+ 
++/* Check request-target bytes before URL decoding can truncate or normalize them. */
++static int
++request_target_hex(unsigned char c)
++{
++	if ((c >= '0') && (c <= '9')) {
++		return c - '0';
++	}
++	if ((c >= 'a') && (c <= 'f')) {
++		return c - 'a' + 10;
++	}
++	if ((c >= 'A') && (c <= 'F')) {
++		return c - 'A' + 10;
++	}
++	return -1;
++}
++
++
++static int
++valid_request_target(const char *target)
++{
++	for (; *target; ++target) {
++		unsigned char c = (unsigned char)*target;
++		if (c == '%') {
++			int high = request_target_hex((unsigned char)target[1]);
++			int low;
++			/* A missing first hex digit must not cause a read beyond the NUL. */
++			if (high < 0) {
++				return 0;
++			}
++			low = request_target_hex((unsigned char)target[2]);
++			if (low < 0) {
++				return 0;
++			}
++			c = (unsigned char)((high << 4) | low);
++			/* Companion has no request-target field that accepts control bytes. */
++			if ((c < 32) || (c == 127)) {
++				return 0;
++			}
++			target += 2;
++		} else if (!(((c >= 'A') && (c <= 'Z')) || ((c >= 'a') && (c <= 'z'))
++		             || ((c >= '0') && (c <= '9'))
++		             || (strchr("-._~:/?[]@!$&'()*+,;=", c) != NULL))) {
++			/* URI reserved/unreserved ASCII, excluding the fragment delimiter. */
++			return 0;
++		}
++	}
++	return 1;
++}
++
++
+ /* Check if the uri is valid.
+  * return 0 for invalid uri,
+  * return 1 for *,
+  * return 2 for relative uri,
+@@ -18583,20 +18633,10 @@
+ 		/* asterisk */
+ 		return 1;
+ 	}
+ 
+-	/* Valid URIs according to RFC 3986
+-	 * (https://www.ietf.org/rfc/rfc3986.txt)
+-	 * must only contain reserved characters :/?#[]@!$&'()*+,;=
+-	 * and unreserved characters A-Z a-z 0-9 and -._~
+-	 * and % encoded symbols.
+-	 */
+-	for (i = 0; uri[i] != 0; i++) {
+-		if (uri[i] < 33) {
+-			/* control characters and spaces are invalid */
+-			return 0;
+-		}
+-		/* Allow everything else here (See #894) */
++	if (!valid_request_target(uri)) {
++		return 0;
+ 	}
+ 
+ 	/* A relative uri starts with a / character */
+ 	if (uri[0] == '/') {

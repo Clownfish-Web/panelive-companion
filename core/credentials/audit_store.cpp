@@ -57,6 +57,30 @@ public:
     return result == SQLITE_ROW;
   }
 
+  void bind_text(int index, std::string_view value)
+  {
+    checked(sqlite3_bind_text64(value_.get(),
+                                index,
+                                value.empty() ? "" : value.data(),
+                                static_cast<sqlite3_uint64>(value.size()),
+                                SQLITE_TRANSIENT,
+                                SQLITE_UTF8),
+            sqlite3_db_handle(value_.get()));
+  }
+
+  void bind_unsigned(int index, std::uint64_t value)
+  {
+    if (value > static_cast<std::uint64_t>(std::numeric_limits<sqlite3_int64>::max()))
+      throw std::out_of_range("Credential storage integer exceeds SQLite range");
+    checked(sqlite3_bind_int64(value_.get(), index, static_cast<sqlite3_int64>(value)),
+            sqlite3_db_handle(value_.get()));
+  }
+
+  void bind_null(int index)
+  {
+    checked(sqlite3_bind_null(value_.get(), index), sqlite3_db_handle(value_.get()));
+  }
+
   Statement(const Statement&) = delete;
   Statement& operator=(const Statement&) = delete;
 
@@ -147,11 +171,7 @@ std::vector<std::string> active_operator_ids(sqlite3* db, std::string_view produ
                       "SELECT id FROM devices WHERE role='operator' AND revoked=0 "
                       "AND production_provider=? "
                       "ORDER BY last_seen_ms DESC,created_ms DESC,id DESC");
-  sqlite3_bind_text(statement.get(),
-                    1,
-                    production_provider.data(),
-                    static_cast<int>(production_provider.size()),
-                    SQLITE_TRANSIENT);
+  statement.bind_text(1, production_provider);
   std::vector<std::string> result;
   while (statement.row())
     result.emplace_back(reinterpret_cast<const char*>(sqlite3_column_text(statement.get(), 0)));
@@ -162,10 +182,8 @@ void update_role(sqlite3* db, std::string_view device_id, Role role)
 {
   Statement statement(db, "UPDATE devices SET role=? WHERE id=? AND revoked=0");
   const auto value = role_name(role);
-  sqlite3_bind_text(
-      statement.get(), 1, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
-  sqlite3_bind_text(
-      statement.get(), 2, device_id.data(), static_cast<int>(device_id.size()), SQLITE_TRANSIENT);
+  statement.bind_text(1, value);
+  statement.bind_text(2, device_id);
   checked(sqlite3_step(statement.get()), db);
 }
 
@@ -179,37 +197,25 @@ void insert_device(sqlite3* db,
       "INSERT INTO devices(id,name,role,token_hash,created_ms,last_seen_ms,production_provider,"
       "device_type,screen_width_logical_pixels,screen_height_logical_pixels) "
       "VALUES(?,?,?,?,?,?,?,?,?,?)");
-  sqlite3_bind_text(statement.get(), 1, device.id.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(statement.get(), 2, device.name.c_str(), -1, SQLITE_TRANSIENT);
+  statement.bind_text(1, device.id);
+  statement.bind_text(2, device.name);
   const auto role = role_name(device.role);
-  sqlite3_bind_text(
-      statement.get(), 3, role.data(), static_cast<int>(role.size()), SQLITE_TRANSIENT);
-  sqlite3_bind_text(
-      statement.get(), 4, token_hash.data(), static_cast<int>(token_hash.size()), SQLITE_TRANSIENT);
-  sqlite3_bind_int64(statement.get(), 5, static_cast<sqlite3_int64>(created_at));
-  sqlite3_bind_int64(statement.get(), 6, static_cast<sqlite3_int64>(created_at));
-  sqlite3_bind_text(statement.get(), 7, device.production_provider.c_str(), -1, SQLITE_TRANSIENT);
+  statement.bind_text(3, role);
+  statement.bind_text(4, token_hash);
+  statement.bind_unsigned(5, created_at);
+  statement.bind_unsigned(6, created_at);
+  statement.bind_text(7, device.production_provider);
   const auto device_type = device_type_name(effective_device_type(device.device_info));
-  sqlite3_bind_text(statement.get(),
-                    8,
-                    device_type.data(),
-                    static_cast<int>(device_type.size()),
-                    SQLITE_TRANSIENT);
+  statement.bind_text(8, device_type);
   if (device.device_info.screen_size)
   {
-    sqlite3_bind_int64(
-        statement.get(),
-        9,
-        static_cast<sqlite3_int64>(device.device_info.screen_size->width_logical_pixels));
-    sqlite3_bind_int64(
-        statement.get(),
-        10,
-        static_cast<sqlite3_int64>(device.device_info.screen_size->height_logical_pixels));
+    statement.bind_unsigned(9, device.device_info.screen_size->width_logical_pixels);
+    statement.bind_unsigned(10, device.device_info.screen_size->height_logical_pixels);
   }
   else
   {
-    sqlite3_bind_null(statement.get(), 9);
-    sqlite3_bind_null(statement.get(), 10);
+    statement.bind_null(9);
+    statement.bind_null(10);
   }
   checked(sqlite3_step(statement.get()), db);
 }
@@ -432,7 +438,7 @@ void AuditStore::revoke_device(std::string_view id)
 {
   std::lock_guard mutation_lock(mutation_mutex_);
   Statement statement(db_.get(), "UPDATE devices SET revoked=1 WHERE id=?");
-  sqlite3_bind_text(statement.get(), 1, id.data(), static_cast<int>(id.size()), SQLITE_TRANSIENT);
+  statement.bind_text(1, id);
   checked(sqlite3_step(statement.get()), db_.get());
   std::lock_guard lock(mutex_);
   if (const auto found = device_cache_.find(id); found != device_cache_.end())
@@ -458,7 +464,7 @@ bool AuditStore::forget_device(std::string_view id)
 {
   std::lock_guard mutation_lock(mutation_mutex_);
   Statement statement(db_.get(), "DELETE FROM devices WHERE id=?");
-  sqlite3_bind_text(statement.get(), 1, id.data(), static_cast<int>(id.size()), SQLITE_TRANSIENT);
+  statement.bind_text(1, id);
   checked(sqlite3_step(statement.get()), db_.get());
   const bool forgotten = sqlite3_changes(db_.get()) > 0;
   if (forgotten)
@@ -479,9 +485,8 @@ bool AuditStore::rename_device(std::string_view id, std::string_view name)
   std::lock_guard mutation_lock(mutation_mutex_);
   std::string prepared_name(name);
   Statement statement(db_.get(), "UPDATE devices SET name=? WHERE id=? AND revoked=0");
-  sqlite3_bind_text(
-      statement.get(), 1, name.data(), static_cast<int>(name.size()), SQLITE_TRANSIENT);
-  sqlite3_bind_text(statement.get(), 2, id.data(), static_cast<int>(id.size()), SQLITE_TRANSIENT);
+  statement.bind_text(1, name);
+  statement.bind_text(2, id);
   checked(sqlite3_step(statement.get()), db_.get());
   const bool renamed = sqlite3_changes(db_.get()) > 0;
   if (renamed)

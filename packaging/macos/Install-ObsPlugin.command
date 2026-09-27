@@ -1,5 +1,5 @@
 #!/bin/bash
-# Interactive plugin installer; the user plugin location needs no sudo.
+# Interactive plugin installer; only the shared integration component may request elevation.
 package_directory=$(cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
 if /bin/bash "$package_directory/Install-ObsPlugin.sh" "$@"; then
   result=0

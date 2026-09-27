@@ -1,5 +1,7 @@
 #pragma once
 
+#include "linux_desktop_status.hpp"
+
 #include <gio/gio.h>
 #include <studio_remote/ui/management_interface.hpp>
 
@@ -27,6 +29,8 @@ public:
 
   LinuxStatusNotifierItem(const LinuxStatusNotifierItem&) = delete;
   LinuxStatusNotifierItem& operator=(const LinuxStatusNotifierItem&) = delete;
+
+  void update(LinuxDesktopStatus status);
 
 private:
   static void name_acquired(GDBusConnection* connection, const gchar* name, gpointer context);
@@ -60,6 +64,7 @@ private:
   GVariant* menu_properties(std::int32_t id) const;
 
   LinuxStatusNotifierActions actions_;
+  LinuxDesktopStatus status_;
   GDBusConnection* connection_ = nullptr;
   GDBusNodeInfo* status_node_ = nullptr;
   GDBusNodeInfo* menu_node_ = nullptr;

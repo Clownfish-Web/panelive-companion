@@ -10,8 +10,9 @@ Private test harnesses and release automation are intentionally absent from this
 
 - Git, CMake **3.28+**, Ninja, and a C++20 compiler. Use a checkout path without
   spaces: the FFmpeg overlay rejects source paths containing spaces.
-- vcpkg, using the `builtin-baseline` committed in `vcpkg.json`. Keep the checked-in
-  `cmake/overlays` FFmpeg port: its version and Windows DLL names are part of this build.
+- vcpkg, using the `builtin-baseline` committed in `vcpkg.json`. Keep all checked-in
+  `cmake/overlays` ports: FFmpeg defines the expected version and Windows DLL names,
+  while CivetWeb and libdatachannel include required input-validation patches.
 - OBS Studio and matching OBS development inputs for the separate helper.
 - An internet connection for the initial dependency downloads. Cold builds can take
   substantially longer than subsequent builds.
@@ -148,8 +149,6 @@ cmake --build out/build/obs-plugin-macos-arm64 --parallel 4
 package="$PWD/out/package/panelive-companion-0.1.0-beta.1-macos-arm64-custom"
 cmake --install out/build/macos-arm64-release --prefix "$package"
 cmake --install out/build/obs-plugin-macos-arm64 --prefix "$package/obs-plugin"
-ditto -c -k --keepParent "$package" "$package.zip"
-shasum -a 256 "$package.zip"
 ```
 
 The Companion is `panelive-companion.app`; the separate helper is
@@ -158,6 +157,30 @@ locally with an ad-hoc signature by default. To use your own identity, configure
 `STUDIO_REMOTE_MACOS_CODESIGN_IDENTITY` for Companion and `OBS_PLUGIN_CODESIGN_IDENTITY`
 for the helper. Local signatures do not establish notarization or release acceptance.
 See [running instructions](RUNNING.md#macos).
+
+The standalone helper installer now uses a separate native integration bundle to
+update the shared OBS helper. Before creating the ZIP, stage that bundle with the
+matching helper. Run from the repository root, keeping `$package` from above:
+
+```sh
+integration="$package/installer-tools/panelive-companion-integrations.app"
+mkdir -p "$integration/Contents/MacOS" "$integration/Contents/Resources"
+cp out/build/macos-arm64-release/panelive-companion-integrations \
+  "$integration/Contents/MacOS/panelive-companion-integrations"
+sed -e 's/@BUILD_VERSION@/0.1.0-beta.1/g' -e 's/@VERSION@/0.1.0/g' \
+  packaging/macos/installer/integrations/Info.plist.in > "$integration/Contents/Info.plist"
+ditto "$package/obs-plugin/obs-plugins/panelive-companion-obs-plugin.plugin" \
+  "$integration/Contents/Resources/panelive-companion-obs-plugin.plugin"
+codesign --force --sign - --identifier panelive-companion-integrations \
+  --options runtime --timestamp=none "$integration"
+codesign --verify --strict "$integration"
+ditto -c -k --keepParent "$package" "$package.zip"
+shasum -a 256 "$package.zip"
+```
+
+For Intel, use `macos-x64-release` in the executable copy command. The ad-hoc signature
+above is for local evaluation. For a signed build, use your own signing identity and
+the appropriate timestamp option, consistent with the Companion and helper builds.
 
 ## Linux x86_64 (Ubuntu and Debian)
 
@@ -203,7 +226,7 @@ sudo apt-get update
 sudo apt-get install --yes \
   build-essential ca-certificates cmake curl git dpkg-dev fakeroot \
   libadwaita-1-dev libavahi-client-dev libdbus-1-dev libglib2.0-dev \
-  libgtk-4-dev libsecret-1-dev libjpeg-dev libobs-dev libpulse-dev \
+  libgtk-4-dev libsecret-1-dev libjpeg-dev libobs-dev libpulse-dev librsvg2-common \
   nasm ninja-build pkg-config qt6-base-dev tar unzip zip python3 \
   autoconf automake libtool
 ```
@@ -252,15 +275,48 @@ removal, desktop launch, autostart, and OBS helper loading on clean target syste
 Also check OBS installation after Companion, incompatible OBS, and OBS removal.
 Do not run Companion as root.
 
+## Arch/Omarchy x86_64
+
+Build natively on Arch/Omarchy with CMake 3.28+, a C++20 compiler, Ninja, vcpkg,
+GTK4/Libadwaita, Avahi, libsecret, PulseAudio, libjpeg-turbo, librsvg, and native OBS
+30+ development files with Qt 6. Bootstrap vcpkg using the pinned baseline as above,
+then build `cmake --preset omarchy-x64-release` followed by
+`cmake --build --preset omarchy-x64-release --parallel 4`.
+
+This preset uses Arch's library layout and dynamically links its libjpeg-turbo.
+It installs the OBS helper directly into `usr/lib/obs-plugins` in a separate package.
+To create evaluation packages from the completed build, run from the repository root:
+
+```sh
+stage="$PWD/out/package/omarchy-custom"
+mkdir -p "$stage/payload/companion" "$stage/payload/helper"
+DESTDIR="$stage/payload/companion" cmake --install out/build/omarchy-x64-release \
+  --prefix /usr --component Unspecified
+DESTDIR="$stage/payload/helper" cmake --install out/build/omarchy-x64-release \
+  --prefix /usr --component OBSPlugin
+payload="$stage/panelive-companion-0.1.0beta.1-payload.tar.zst"
+tar -C "$stage/payload" --zstd -cf "$payload" companion helper
+cmake -DPANELIVE_ARCH_VERSION=0.1.0beta.1 \
+  "-DPANELIVE_PAYLOAD_SHA256=$(sha256sum "$payload" | cut -d ' ' -f 1)" \
+  "-DPANELIVE_RECIPE_OUTPUT=$stage/PKGBUILD" -P packaging/arch/configure-recipe.cmake
+(cd "$stage" && makepkg --nocheck)
+```
+
+Packaging also requires `makepkg`, `tar`, and `zstd`. Install the resulting Companion
+package with `pacman -U`; install the helper package when using OBS. Close OBS during
+helper updates. The optional Quickshell widget is installed under
+`/usr/share/panelive-companion/omarchy-widget/`. These packages require their own
+native runtime validation; they do not share the Debian/Ubuntu compatibility claims.
+
 ## Build options and package contents
 
 - Presets select the implemented platform providers. vMix cannot be enabled on macOS
   or Linux. XSplit and Wirecast remain off.
 - Optional Windows NDI builds require your own SDK via `STUDIO_REMOTE_NDI_SDK_DIR`,
   `STUDIO_REMOTE_ENABLE_VMIX_NDI=ON`, and the appropriate vMix adapter options.
-- Remote tally endpoints come from `config/remote-tally-service.json`. Override
-  `STUDIO_REMOTE_TALLY_SERVICE_CONFIG` only if using a compatible service
-  as described by `cmake/RemoteTallyService.cmake`.
+- Remote tally publication is disabled in this source version. The endpoint file
+  `config/remote-tally-service.json` contains reserved `.invalid` addresses; changing
+  that file alone does not enable the disabled application routes.
 - Preserve `LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, dependency license texts and
   the helper's GPL license when packaging. CMake installs dependency notices from
   the resolved vcpkg tree. See [third-party notices](../THIRD_PARTY_NOTICES.md).

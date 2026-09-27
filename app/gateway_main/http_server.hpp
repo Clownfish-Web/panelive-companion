@@ -147,6 +147,7 @@ private:
   void reply(mg_connection*, int, const json&, std::uint32_t retry_after_ms = 0) const;
   void
   reply_rate_limited(mg_connection*, std::string_view scope, std::uint32_t retry_after_ms) const;
+  void reply_websocket_rate_limited(mg_connection*, std::uint32_t retry_after_ms) const;
   void reply_thumbnail(mg_connection*, const ThumbnailResult&, std::string_view error) const;
   void
   handle_thumbnail(mg_connection*, const Device&, std::string_view path, ThumbnailTarget target);
@@ -154,6 +155,9 @@ private:
   json capabilities(const Device&, const ProductionCatalogSnapshot&) const;
   json backend_status(const Device&) const;
   GenericCommandOutcome execute_generic_command(const Device&, const json& envelope);
+  void handle_websocket_text(mg_connection*, ClientEventConnection&, std::string_view text);
+  void handle_websocket_resync(const Device&, ClientEventConnection&);
+  void handle_websocket_command(const Device&, ClientEventConnection&, json envelope);
   void publish_replacements();
   void publish_replacements(const Device& device);
   json state_replacement(const Device&) const;
@@ -217,6 +221,10 @@ private:
   ClientEventRelay client_events_;
   std::atomic<std::uint64_t> event_connection_sequence_{0};
   RequestAdmission request_admission_;
+  // Guarded by sockets_mutex_. Retain even after revocation until the native close callback.
+  // Declared after its borrowed admission owner so reservations are destroyed first.
+  std::unordered_map<mg_connection*, std::unique_ptr<RequestAdmission::RequestReservation>>
+      websocket_reservations_;
   std::mutex maintenance_mutex_;
   std::condition_variable maintenance_cv_;
   std::thread maintenance_thread_;

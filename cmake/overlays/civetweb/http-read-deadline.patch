@@ -1,0 +1,185 @@
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -6441,10 +6441,39 @@
+ }
+ 
+ 
++static double
++remaining_read_timeout(const struct timespec *started, double timeout)
++{
++	struct timespec now;
++	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
++		return 0.0;
++	}
++	return timeout - mg_difftimespec(&now, started);
++}
++
++
++/* The HTTP worker owns this deadline. Header and body reads share req_time;
++ * repeated mg_read calls and incoming bytes never renew it. On expiry stop
++ * transport input as well, so cleanup cannot be prolonged by more bytes. */
++static double
++remaining_request_read_timeout(struct mg_connection *conn, double timeout)
++{
++	double remaining = remaining_read_timeout(&conn->req_time, timeout);
++	if (remaining <= 0.0) {
++		conn->must_close = 1;
++		(void)shutdown(conn->client.sock, SHUTDOWN_BOTH);
++	}
++	return remaining;
++}
++
++
+ static int
+ pull_all(FILE *fp, struct mg_connection *conn, char *buf, int len)
+ {
+ 	int n, nread = 0;
++	int server_request = (fp == NULL)
++	                     && (conn->connection_type == CONNECTION_TYPE_REQUEST)
++	                     && (conn->protocol_type == PROTOCOL_TYPE_HTTP1);
+ 	double timeout = -1.0;
+ 	uint64_t start_time = 0, now = 0, timeout_ns = 0;
+ 
+@@ -6459,7 +6488,17 @@
+ 	timeout_ns = (uint64_t)(timeout * 1.0E9);
+ 
+ 	while ((len > 0) && STOP_FLAG_IS_ZERO(&conn->phys_ctx->stop_flag)) {
+-		n = pull_inner(fp, conn, buf + nread, len, timeout);
++		double read_timeout = server_request
++		                          ? remaining_request_read_timeout(conn, timeout)
++		                          : timeout;
++		if (server_request && (read_timeout <= 0.0)) {
++			return -1;
++		}
++		n = pull_inner(fp, conn, buf + nread, len, read_timeout);
++		if (server_request
++		    && (remaining_request_read_timeout(conn, timeout) <= 0.0)) {
++			return -1;
++		}
+ 		if (n == -2) {
+ 			if (nread == 0) {
+ 				nread = -1; /* Propagate the error */
+@@ -11117,6 +11156,7 @@
+              int *nread)
+ {
+ 	int request_len, n = 0;
++	int server_request;
+ 	struct timespec last_action_time;
+ 	double request_timeout;
+ 
+@@ -11125,6 +11165,9 @@
+ 	}
+ 
+ 	memset(&last_action_time, 0, sizeof(last_action_time));
++	server_request = (fp == NULL)
++	                 && (conn->connection_type == CONNECTION_TYPE_REQUEST)
++	                 && (conn->protocol_type == PROTOCOL_TYPE_HTTP1);
+ 
+ 	if (conn->dom_ctx->config[REQUEST_TIMEOUT]) {
+ 		/* value of request_timeout is in seconds, config in milliseconds */
+@@ -11157,8 +11200,18 @@
+ 			return -2;
+ 		}
+ 
+-		n = pull_inner(
+-		    fp, conn, buf + *nread, bufsiz - *nread, request_timeout);
++		double read_timeout = request_timeout;
++		if (server_request && (request_timeout >= 0.0)) {
++			read_timeout = remaining_request_read_timeout(conn, request_timeout);
++			if (read_timeout <= 0.0) {
++				return -1;
++			}
++		}
++		n = pull_inner(fp, conn, buf + *nread, bufsiz - *nread, read_timeout);
++		if (server_request && (request_timeout >= 0.0)
++		    && (remaining_request_read_timeout(conn, request_timeout) <= 0.0)) {
++			return -1;
++		}
+ 		if (n == -2) {
+ 			/* Receive error */
+ 			return -1;
+@@ -13122,20 +13175,6 @@
+ #endif
+ 
+ 
+-/* Incomplete server frames have one monotonic deadline across header and payload.
+- * A fresh read or a trickled byte must not renew the budget. Idle connections have
+- * no frame in progress and retain the configured keepalive behavior. */
+-static double
+-websocket_frame_read_timeout(const struct timespec *started, double timeout)
+-{
+-	struct timespec now;
+-	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+-		return 0.0;
+-	}
+-	return timeout - mg_difftimespec(&now, started);
+-}
+-
+-
+ static void
+ read_websocket(struct mg_connection *conn,
+                mg_websocket_data_handler ws_data_handler,
+@@ -13212,7 +13251,7 @@
+ 			frame_in_progress = 1;
+ 		}
+ 		if (frame_in_progress
+-		    && (websocket_frame_read_timeout(&frame_started, timeout) <= 0.0)) {
++		    && (remaining_read_timeout(&frame_started, timeout) <= 0.0)) {
+ 			break;
+ 		}
+ 		if (body_len >= 2) {
+@@ -13312,7 +13351,7 @@
+ 				error = 0;
+ 				while ((uint64_t)len < data_len) {
+ 					double read_timeout = frame_in_progress
+-					                          ? websocket_frame_read_timeout(
++					                          ? remaining_read_timeout(
+ 					                                &frame_started, timeout)
+ 					                          : timeout;
+ 					if (read_timeout <= 0.0) {
+@@ -13370,7 +13409,7 @@
+ 			}
+ 
+ 			if (frame_in_progress
+-			    && (websocket_frame_read_timeout(&frame_started, timeout) <= 0.0)) {
++			    && (remaining_read_timeout(&frame_started, timeout) <= 0.0)) {
+ 				if (data != mem) {
+ 					mg_free(data);
+ 				}
+@@ -13527,7 +13566,7 @@
+ 			/* Read from the socket into the next available location in the
+ 			 * message queue. */
+ 			double read_timeout = frame_in_progress
+-			                          ? websocket_frame_read_timeout(
++			                          ? remaining_read_timeout(
+ 			                                &frame_started, timeout)
+ 			                          : timeout;
+ 			if (read_timeout <= 0.0) {
+@@ -17869,15 +17908,18 @@
+ 	shutdown(conn->client.sock, SHUTDOWN_WR);
+ 
+ #if defined(_WIN32)
+-	/* Read and discard pending incoming data. If we do not do that and
+-	 * close
+-	 * the socket, the data in the send buffer may be discarded. This
+-	 * behaviour is seen on Windows, when client keeps sending data
+-	 * when server decides to close the connection; then when client
+-	 * does recv() it gets no data back. */
+-	do {
+-		n = pull_inner(NULL, conn, buf, sizeof(buf), /* Timeout in s: */ 1.0);
+-	} while (n > 0);
++	/* Give pending output a bounded opportunity to reach the peer. A peer
++	 * sending continuously must not prolong this terminal drain forever. */
++	struct timespec drain_started;
++	if (clock_gettime(CLOCK_MONOTONIC, &drain_started) == 0) {
++		do {
++			double remaining = remaining_read_timeout(&drain_started, 1.0);
++			if (remaining <= 0.0) {
++				break;
++			}
++			n = pull_inner(NULL, conn, buf, sizeof(buf), remaining);
++		} while (n > 0);
++	}
+ #endif
+ 
+ 	if (conn->dom_ctx->config[LINGER_TIMEOUT]) {

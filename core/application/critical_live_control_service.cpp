@@ -1,9 +1,11 @@
 #include "critical_live_control_service.hpp"
+#include "command_authorization.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <future>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -13,9 +15,16 @@ namespace
 {
 constexpr std::size_t queue_capacity = 16;
 constexpr std::size_t terminal_history_capacity = 128;
+constexpr std::size_t sequence_device_capacity = 1024;
 constexpr auto obs_response_timeout = std::chrono::milliseconds(1000);
 constexpr auto output_convergence_timeout = std::chrono::milliseconds(3000);
 constexpr auto poll_interval = std::chrono::milliseconds(25);
+
+bool same_pairing(const Device& first, const Device& second)
+{
+  return first.id == second.id && first.production_provider == second.production_provider &&
+         first.pairing_generation == second.pairing_generation;
+}
 
 std::optional<std::string> required_string(const json& body, std::string_view field)
 {
@@ -193,19 +202,7 @@ void CriticalLiveControlService::stop()
   stopping_ = true;
   {
     std::lock_guard lock(mutex_);
-    for (auto& action : queue_)
-    {
-      action.status = CriticalActionStatus::canceled;
-      action.reason = "expired-companion-stopped";
-      known_by_action_id_.insert_or_assign(action.action_id,
-                                           KnownAction{action,
-                                                       payload_signature(action.device,
-                                                                         action.client_sequence,
-                                                                         action.type,
-                                                                         action.transition_id,
-                                                                         action.destination_id)});
-    }
-    queue_.clear();
+    cancel_queued_locked("expired-companion-stopped", {});
   }
   changed_.notify_all();
   if (worker_.joinable())
@@ -229,7 +226,7 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
   if (!action_id || action_id->size() > 128)
     return reject("", 422, "invalid-command-state", "valid actionId required");
   const auto client_sequence = required_sequence(body);
-  if (!client_sequence)
+  if (!client_sequence || *client_sequence == std::numeric_limits<std::uint64_t>::max())
     return reject(*action_id, 422, "invalid-command-state", "valid clientSequence required");
   const auto action_type = parse_critical_action(body.value("action", ""));
   if (!action_type)
@@ -266,7 +263,7 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
       supplied_device_id != body.end() &&
       (!supplied_device_id->is_string() || supplied_device_id->get<std::string>() != device.id))
     return reject(*action_id, 403, "unauthorized", "deviceId does not match token");
-  if (device.role < Role::operator_)
+  if (!has_current_control_authority(audit_, device))
     return reject(*action_id, 403, "unauthorized", "operator role required");
   if ((*action_type == CriticalActionType::record_pause ||
        *action_type == CriticalActionType::record_resume) &&
@@ -324,8 +321,12 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
       payload_signature(device, *client_sequence, *action_type, transition_id, destination_id);
   {
     std::unique_lock lock(mutex_);
+    if (!has_current_control_authority(audit_, device))
+      return reject(*action_id, 403, "unauthorized", "operator role required");
     if (const auto found = known_by_action_id_.find(*action_id); found != known_by_action_id_.end())
     {
+      if (!same_pairing(found->second.action.device, device))
+        return reject(*action_id, 403, "unauthorized", "Action belongs to another pairing.");
       if (found->second.payload_signature != signature)
       {
         return block_admission(lock,
@@ -347,6 +348,8 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
 
   const auto admission_snapshot = state_.command_state_snapshot();
   const auto admission_verification = verify_control_state(*action_type, admission_snapshot);
+  if (!has_current_control_authority(audit_, device))
+    return reject(*action_id, 403, "unauthorized", "operator role required");
   if (admission_verification != ControlStateVerification::matched)
   {
     if (request_reconcile_)
@@ -365,8 +368,12 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
   json accepted_response;
   {
     std::unique_lock lock(mutex_);
+    if (!has_current_control_authority(audit_, device))
+      return reject(*action_id, 403, "unauthorized", "operator role required");
     if (const auto found = known_by_action_id_.find(*action_id); found != known_by_action_id_.end())
     {
+      if (!same_pairing(found->second.action.device, device))
+        return reject(*action_id, 403, "unauthorized", "Action belongs to another pairing.");
       if (found->second.payload_signature != signature)
       {
         return block_admission(lock,
@@ -391,10 +398,16 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
                              "The critical live control FIFO is full.");
     }
     const auto sequence_key = device.id;
+    if (!prepare_sequence_locked(device, *client_sequence))
+      return reject(*action_id,
+                    503,
+                    "critical-controls-unavailable",
+                    "Critical control device capacity is exhausted.");
     if (const auto found = next_client_sequence_.find(sequence_key);
-        found != next_client_sequence_.end() && *client_sequence != found->second)
+        found != next_client_sequence_.end() && *client_sequence != found->second.next)
     {
-      sequence_recovery_ = SequenceRecovery{device.id, *action_id, *client_sequence, found->second};
+      sequence_recovery_ =
+          SequenceRecovery{device.id, *action_id, *client_sequence, found->second.next};
       return block_admission(lock,
                              device,
                              *action_id,
@@ -412,7 +425,7 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
     accepted.accepted_monotonic_ns = monotonic_ns();
     queue_.push_back(accepted);
     known_by_action_id_.insert_or_assign(*action_id, KnownAction{accepted, signature});
-    next_client_sequence_[sequence_key] = *client_sequence + 1;
+    next_client_sequence_.at(sequence_key).next = *client_sequence + 1;
     accepted_response = action_json(accepted);
   }
 
@@ -424,6 +437,37 @@ CriticalSubmitResult CriticalLiveControlService::submit(const Device& device, co
   emit_action("criticalActionAccepted", accepted);
   changed_.notify_all();
   return {202, std::move(accepted_response)};
+}
+
+bool CriticalLiveControlService::prepare_sequence_locked(const Device& device,
+                                                         std::uint64_t initial_sequence)
+{
+  if (const auto found = next_client_sequence_.find(device.id);
+      found != next_client_sequence_.end())
+  {
+    if (found->second.pairing_generation == device.pairing_generation &&
+        found->second.production_provider == device.production_provider)
+      return true;
+    next_client_sequence_.erase(found);
+  }
+  if (next_client_sequence_.size() >= sequence_device_capacity)
+  {
+    // Preserve every current pairing's anti-replay sequence, including demoted Viewers.
+    std::erase_if(next_client_sequence_,
+                  [&](const auto& entry)
+                  {
+                    const auto current = audit_.active_device(entry.first);
+                    return !current ||
+                           current->pairing_generation != entry.second.pairing_generation ||
+                           current->production_provider != entry.second.production_provider;
+                  });
+    if (next_client_sequence_.size() >= sequence_device_capacity)
+      return false;
+  }
+  next_client_sequence_.emplace(
+      device.id,
+      ClientSequence{device.pairing_generation, device.production_provider, initial_sequence});
+  return true;
 }
 
 CriticalSubmitResult CriticalLiveControlService::block_admission(std::unique_lock<std::mutex>& lock,
@@ -457,7 +501,7 @@ CriticalSubmitResult CriticalLiveControlService::block_admission(std::unique_loc
 CriticalSubmitResult CriticalLiveControlService::acknowledge_block(const Device& device,
                                                                    const json& body)
 {
-  if (device.role < Role::operator_)
+  if (!has_current_control_authority(audit_, device))
     return reject("", 403, "unauthorized", "operator role required");
 
   const auto request_id = required_string(body, "requestId");
@@ -467,6 +511,8 @@ CriticalSubmitResult CriticalLiveControlService::acknowledge_block(const Device&
   json recovery_evidence;
   {
     std::lock_guard lock(mutex_);
+    if (!has_current_control_authority(audit_, device))
+      return reject(*request_id, 403, "unauthorized", "operator role required");
     if (!blocked_)
     {
       return {200,
@@ -487,6 +533,8 @@ CriticalSubmitResult CriticalLiveControlService::acknowledge_block(const Device&
                {"message", blocked_message_}}};
     }
 
+    if (!has_current_control_authority(audit_, device))
+      return reject(*request_id, 403, "unauthorized", "operator role required");
     recovery_evidence = {{"blockReason", blocked_reason_}, {"acknowledgingDeviceId", device.id}};
     if (sequence_recovery_)
     {
@@ -522,10 +570,15 @@ CriticalSubmitResult CriticalLiveControlService::acknowledge_block(const Device&
 json CriticalLiveControlService::status(std::string_view action_id, const Device& requester) const
 {
   std::lock_guard lock(mutex_);
+  const auto current = audit_.active_device(requester.id);
+  if (!current || !same_pairing(*current, requester))
+    return {{"status", "REJECTED"}, {"reason", "unauthorized"}};
   const auto found = known_by_action_id_.find(std::string(action_id));
   if (found == known_by_action_id_.end())
     return {{"status", "UNKNOWN_OR_EXPIRED"}, {"reason", "live-action-window-expired"}};
-  if (requester.role < Role::admin && found->second.action.device.id != requester.id)
+  const auto& owner = found->second.action.device;
+  if (owner.production_provider != current->production_provider ||
+      (current->role < Role::admin && !same_pairing(owner, *current)))
     return {{"status", "REJECTED"}, {"reason", "unauthorized"}};
   return action_json(found->second.action);
 }
@@ -658,6 +711,15 @@ void CriticalLiveControlService::worker_loop()
 
 void CriticalLiveControlService::execute(CriticalAction action)
 {
+  const auto admit_execution = [&]
+  {
+    if (has_current_control_authority(audit_, action.device))
+      return true;
+    fault(std::move(action), "unauthorized", "Critical action authority changed before dispatch.");
+    return false;
+  };
+  if (!admit_execution())
+    return;
   if (!obs_.connected())
   {
     fault(std::move(action), "obs-disconnected", "OBS is not connected.");
@@ -672,6 +734,8 @@ void CriticalLiveControlService::execute(CriticalAction action)
   }
 
   const auto execution_verification = verify_control_state(action.type, snapshot);
+  if (!admit_execution())
+    return;
   if (execution_verification != ControlStateVerification::matched)
   {
     if (request_reconcile_)
@@ -770,20 +834,32 @@ void CriticalLiveControlService::execute(CriticalAction action)
   }
   try
   {
-    auto request_done = std::async(
-        std::launch::async,
-        [&]
-        {
-          return request_executor_
-                     ? request_executor_->request(ObsRequestLane::critical, request, request_data)
-                     : obs_.request(request, request_data);
-        });
+    auto request_done =
+        std::async(std::launch::async,
+                   [&, device = action.device]() -> std::optional<json>
+                   {
+                     // Thread scheduling and capability checks can outlive the earlier authority
+                     // sample.
+                     if (!has_current_control_authority(audit_, device))
+                       return std::nullopt;
+                     const auto authorized = [this, device]
+                     { return !stopping_ && has_current_control_authority(audit_, device); };
+                     return request_executor_
+                                ? request_executor_->request_authorized(
+                                      ObsRequestLane::critical, request, request_data, authorized)
+                                : obs_.request_authorized(request, request_data, authorized);
+                   });
     if (request_done.wait_for(obs_response_timeout) != std::future_status::ready)
     {
       fault(std::move(action), "obs-request-timeout", "OBS did not respond in time.");
       return;
     }
-    static_cast<void>(request_done.get());
+    if (!request_done.get())
+    {
+      fault(
+          std::move(action), "unauthorized", "Critical action authority changed before dispatch.");
+      return;
+    }
   }
   catch (const std::exception& error)
   {
@@ -827,24 +903,7 @@ void CriticalLiveControlService::complete(CriticalAction action, std::string out
   action.evidence["outcome"] = outcome;
   {
     std::lock_guard lock(mutex_);
-    known_by_action_id_.insert_or_assign(action.action_id,
-                                         KnownAction{action,
-                                                     payload_signature(action.device,
-                                                                       action.client_sequence,
-                                                                       action.type,
-                                                                       action.transition_id,
-                                                                       action.destination_id)});
-    history_.push_back(KnownAction{action,
-                                   payload_signature(action.device,
-                                                     action.client_sequence,
-                                                     action.type,
-                                                     action.transition_id,
-                                                     action.destination_id)});
-    while (history_.size() > terminal_history_capacity)
-    {
-      known_by_action_id_.erase(history_.front().action.action_id);
-      history_.pop_front();
-    }
+    remember_terminal_locked(action);
   }
   audit_.command(action.device.id,
                  critical_action_wire_name(action.type),
@@ -868,13 +927,7 @@ void CriticalLiveControlService::fault(CriticalAction action,
     blocked_reason_ = reason;
     blocked_message_ = message;
     blocked_at_monotonic_ns_ = monotonic_ns();
-    known_by_action_id_.insert_or_assign(action.action_id,
-                                         KnownAction{action,
-                                                     payload_signature(action.device,
-                                                                       action.client_sequence,
-                                                                       action.type,
-                                                                       action.transition_id,
-                                                                       action.destination_id)});
+    remember_terminal_locked(action);
     cancel_queued_locked(reason, message);
   }
   audit_.command(action.device.id,
@@ -894,15 +947,26 @@ void CriticalLiveControlService::cancel_queued_locked(std::string reason, std::s
     action.status = CriticalActionStatus::canceled;
     action.reason = reason;
     action.message = message;
-    known_by_action_id_.insert_or_assign(action.action_id,
-                                         KnownAction{action,
-                                                     payload_signature(action.device,
-                                                                       action.client_sequence,
-                                                                       action.type,
-                                                                       action.transition_id,
-                                                                       action.destination_id)});
+    remember_terminal_locked(action);
   }
   queue_.clear();
+}
+
+void CriticalLiveControlService::remember_terminal_locked(const CriticalAction& action)
+{
+  known_by_action_id_.insert_or_assign(action.action_id,
+                                       KnownAction{action,
+                                                   payload_signature(action.device,
+                                                                     action.client_sequence,
+                                                                     action.type,
+                                                                     action.transition_id,
+                                                                     action.destination_id)});
+  history_.push_back(action.action_id);
+  while (history_.size() > terminal_history_capacity)
+  {
+    known_by_action_id_.erase(history_.front());
+    history_.pop_front();
+  }
 }
 
 bool CriticalLiveControlService::can_unblock_locked() const

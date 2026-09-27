@@ -13,7 +13,7 @@ json ObsRequestArbiter::request(ObsRequestLane lane,
                                 std::source_location caller,
                                 std::string_view reason)
 {
-  return request_impl(lane, type, std::move(data), caller, reason, false);
+  return *request_impl(lane, type, std::move(data), caller, reason, false, {});
 }
 
 json ObsRequestArbiter::request_current(ObsRequestLane lane,
@@ -22,15 +22,28 @@ json ObsRequestArbiter::request_current(ObsRequestLane lane,
                                         std::source_location caller,
                                         std::string_view reason)
 {
-  return request_impl(lane, type, std::move(data), caller, reason, true);
+  return *request_impl(lane, type, std::move(data), caller, reason, true, {});
 }
 
-json ObsRequestArbiter::request_impl(ObsRequestLane lane,
-                                     std::string_view type,
-                                     json data,
-                                     std::source_location caller,
-                                     std::string_view reason,
-                                     bool current)
+std::optional<json> ObsRequestArbiter::request_authorized(ObsRequestLane lane,
+                                                          std::string_view type,
+                                                          json data,
+                                                          const std::function<bool()>& authorized,
+                                                          std::source_location caller,
+                                                          std::string_view reason)
+{
+  if (!authorized)
+    return std::nullopt;
+  return request_impl(lane, type, std::move(data), caller, reason, false, authorized);
+}
+
+std::optional<json> ObsRequestArbiter::request_impl(ObsRequestLane lane,
+                                                    std::string_view type,
+                                                    json data,
+                                                    std::source_location caller,
+                                                    std::string_view reason,
+                                                    bool current,
+                                                    const std::function<bool()>& authorized)
 {
   {
     std::unique_lock lock(mutex_);
@@ -49,8 +62,10 @@ json ObsRequestArbiter::request_impl(ObsRequestLane lane,
 
   try
   {
-    auto result = current ? obs_.request_current(type, std::move(data), caller, reason)
-                          : obs_.request(type, std::move(data), caller, reason);
+    auto result =
+        authorized ? obs_.request_authorized(type, std::move(data), authorized, caller, reason)
+        : current ? std::optional<json>(obs_.request_current(type, std::move(data), caller, reason))
+                  : std::optional<json>(obs_.request(type, std::move(data), caller, reason));
     {
       std::lock_guard lock(mutex_);
       request_in_flight_ = false;
@@ -101,6 +116,15 @@ json LaneObsAdapter::request(std::string_view type,
                              std::string_view reason)
 {
   return arbiter_.request(lane_, type, std::move(data), caller, reason);
+}
+
+std::optional<json> LaneObsAdapter::request_authorized(std::string_view type,
+                                                       json data,
+                                                       const std::function<bool()>& authorized,
+                                                       std::source_location caller,
+                                                       std::string_view reason)
+{
+  return arbiter_.request_authorized(lane_, type, std::move(data), authorized, caller, reason);
 }
 
 json LaneObsAdapter::request_current(std::string_view type,

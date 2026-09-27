@@ -1,0 +1,125 @@
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -13122,6 +13122,20 @@
+ #endif
+ 
+ 
++/* Incomplete server frames have one monotonic deadline across header and payload.
++ * A fresh read or a trickled byte must not renew the budget. Idle connections have
++ * no frame in progress and retain the configured keepalive behavior. */
++static double
++websocket_frame_read_timeout(const struct timespec *started, double timeout)
++{
++	struct timespec now;
++	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
++		return 0.0;
++	}
++	return timeout - mg_difftimespec(&now, started);
++}
++
++
+ static void
+ read_websocket(struct mg_connection *conn,
+                mg_websocket_data_handler ws_data_handler,
+@@ -13157,6 +13171,8 @@
+ 	double timeout = -1.0;
+ 	int enable_ping_pong = 0;
+ 	int ping_count = 0;
++	int frame_in_progress = 0;
++	struct timespec frame_started = {0, 0};
+ 
+ 	if (conn->dom_ctx->config[ENABLE_WEBSOCKET_PING_PONG]) {
+ 		enable_ping_pong =
+@@ -13187,7 +13203,19 @@
+ 	       && (!conn->must_close)) {
+ 		header_len = 0;
+ 		DEBUG_ASSERT(conn->data_len >= conn->request_len);
+-		if ((body_len = (size_t)(conn->data_len - conn->request_len)) >= 2) {
++		body_len = (size_t)(conn->data_len - conn->request_len);
++		if ((conn->connection_type == CONNECTION_TYPE_REQUEST)
++		    && (body_len > 0) && !frame_in_progress) {
++			if (clock_gettime(CLOCK_MONOTONIC, &frame_started) != 0) {
++				break;
++			}
++			frame_in_progress = 1;
++		}
++		if (frame_in_progress
++		    && (websocket_frame_read_timeout(&frame_started, timeout) <= 0.0)) {
++			break;
++		}
++		if (body_len >= 2) {
+ 			len = buf[1] & 127;
+ 			mask_len = (buf[1] & 128) ? 4 : 0;
+ 			/* Companion accepts masked, final text and control frames only.
+@@ -13283,11 +13311,19 @@
+ 				memcpy(data, buf + header_len, len);
+ 				error = 0;
+ 				while ((uint64_t)len < data_len) {
++					double read_timeout = frame_in_progress
++					                          ? websocket_frame_read_timeout(
++					                                &frame_started, timeout)
++					                          : timeout;
++					if (read_timeout <= 0.0) {
++						error = 1;
++						break;
++					}
+ 					n = pull_inner(NULL,
+ 					               conn,
+ 					               (char *)(data + len),
+ 					               (int)(data_len - len),
+-					               timeout);
++					               read_timeout);
+ 					if (n <= -2) {
+ 						error = 1;
+ 						break;
+@@ -13332,6 +13368,15 @@
+ 				/* Mark the queue as advanced */
+ 				conn->data_len -= (int)len;
+ 			}
++
++			if (frame_in_progress
++			    && (websocket_frame_read_timeout(&frame_started, timeout) <= 0.0)) {
++				if (data != mem) {
++					mg_free(data);
++				}
++				break;
++			}
++			frame_in_progress = 0;
+ 
+ 			/* Apply mask if necessary */
+ 			if (mask_len > 0) {
+@@ -13481,11 +13526,18 @@
+ 		} else {
+ 			/* Read from the socket into the next available location in the
+ 			 * message queue. */
++			double read_timeout = frame_in_progress
++			                          ? websocket_frame_read_timeout(
++			                                &frame_started, timeout)
++			                          : timeout;
++			if (read_timeout <= 0.0) {
++				break;
++			}
+ 			n = pull_inner(NULL,
+ 			               conn,
+ 			               conn->buf + conn->data_len,
+ 			               conn->buf_size - conn->data_len,
+-			               timeout);
++			               read_timeout);
+ 			if (n <= -2) {
+ 				/* Error, no bytes read */
+ 				DEBUG_TRACE("PULL from %s:%u failed",
+@@ -13531,6 +13583,14 @@
+ 				/* TODO: get timeout def */
+ 			}
+ 		}
++	}
++
++	/* An unfinished server frame is terminal. Disable further input before
++	 * native cleanup, whose Windows drain would otherwise wait forever on
++	 * a peer that keeps sending. The reader still owns all close callbacks,
++	 * TLS destruction and socket closure; shutdown does not free shared state. */
++	if ((conn->connection_type == CONNECTION_TYPE_REQUEST) && frame_in_progress) {
++		(void)shutdown(conn->client.sock, SHUTDOWN_BOTH);
+ 	}
+ 
+ 	/* Leave data processing loop */

@@ -65,11 +65,8 @@ struct ManagementAdvancedPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Advanced Settings").font(.system(size: 28, weight: .semibold))
-                Text("Choose the interface and configure Companion-wide behavior.")
-                    .foregroundStyle(.secondary)
-            }
+            ManagementPageHeading(title: "Advanced Settings",
+                subtitle: "Choose the interface and configure Companion-wide behavior.")
             ScrollView {
                 VStack(spacing: 18) {
                     interfaceCard

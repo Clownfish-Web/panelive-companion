@@ -31,16 +31,15 @@ bool WindowsObsRuntimeCapabilities::recording_pause_available() const
 
 bool WindowsObsRuntimeCapabilities::open() const
 {
-  mapping_handle_ =
-      OpenFileMappingW(FILE_MAP_READ, FALSE, ipc::obs_runtime_capabilities_mapping_name);
+  mapping_handle_ = windows::open_owner_restricted_mapping(
+      FILE_MAP_READ, ipc::obs_runtime_capabilities_mapping_name);
   if (!mapping_handle_)
     return false;
   mapping_ = static_cast<const ipc::ObsRuntimeCapabilitiesMapping*>(MapViewOfFile(
-      mapping_handle_, FILE_MAP_READ, 0, 0, sizeof(ipc::ObsRuntimeCapabilitiesMapping)));
+      mapping_handle_.get(), FILE_MAP_READ, 0, 0, sizeof(ipc::ObsRuntimeCapabilitiesMapping)));
   if (!mapping_)
   {
-    CloseHandle(mapping_handle_);
-    mapping_handle_ = nullptr;
+    mapping_handle_.reset();
     return false;
   }
   return true;
@@ -48,12 +47,10 @@ bool WindowsObsRuntimeCapabilities::open() const
 
 void WindowsObsRuntimeCapabilities::close() const
 {
-  if (mapping_)
-    UnmapViewOfFile(mapping_);
-  if (mapping_handle_)
-    CloseHandle(mapping_handle_);
+  if (mapping_ && !UnmapViewOfFile(mapping_))
+    OutputDebugStringW(L"Could not unmap OBS runtime capabilities\n");
   mapping_ = nullptr;
-  mapping_handle_ = nullptr;
+  mapping_handle_.reset();
 }
 
 } // namespace studio_remote

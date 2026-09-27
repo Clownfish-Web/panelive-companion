@@ -10,11 +10,8 @@ struct ManagementAdaptersPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Adapters").font(.system(size: 28, weight: .semibold))
-                Text("Configure adapter connections.")
-                    .foregroundStyle(.secondary)
-            }
+            ManagementPageHeading(title: "Adapters",
+                subtitle: "Configure adapter connections.")
             ScrollView {
                 VStack(spacing: 18) {
                     VStack(alignment: .leading, spacing: 14) {

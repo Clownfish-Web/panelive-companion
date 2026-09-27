@@ -35,15 +35,14 @@ products and are not included here.
 - **LAN discovery and live state:** DNS-SD discovery, revisioned state updates,
   independent backend reconnects, and queued critical output actions.
 - **Native management:** connected clients, adapter controls, settings, pairing,
-  diagnostics, and graceful shutdown through the desktop frontend.
+  diagnostics, client connection notifications, and graceful shutdown through the desktop frontend.
 - **Teleprompter:** a script library, per-client script delivery, shared sessions and
   presentation settings, controller/master roles, timed pauses and cue markers,
   progress and voice-follow state synchronization, and a standalone adapter that does
   not require OBS, vMix, or Streamlabs Desktop. Voice recognition runs on the compatible
   master client.
-- **Tally and coordination:** recursive source membership for tally evaluation,
-  production countdown event relay, and optional remote tally publication. Remote
-  publication depends on a compatible hosted service; the service is not bundled.
+- **Tally and coordination:** recursive source membership for tally evaluation and
+  production countdown event relay. Remote tally publication is currently disabled.
 
 ## Supported platforms
 
@@ -87,6 +86,11 @@ Installing or upgrading OBS later automatically rechecks helper setup. Ubuntu 22
 and Debian 12 need a newer OBS package than their stock repositories provide.
 Flatpak/Snap OBS cannot load this native helper.
 See [Linux installation](docs/RUNNING.md#linux).
+
+An additional source-build preset supports **Arch/Omarchy x86_64**, with native GTK
+appearance and an optional desktop widget. Its separate Companion and OBS helper
+packages use Arch libraries; the Ubuntu/Debian installer validation above does not
+apply to them. See [Arch/Omarchy build instructions](docs/BUILDING.md#archomarchy-x86_64).
 
 ### Backend availability
 

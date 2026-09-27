@@ -1,0 +1,39 @@
+diff --git a/src/civetweb.c b/src/civetweb.c
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -13189,6 +13189,20 @@ read_websocket(struct mg_connection *conn,
+ 		if ((body_len = (size_t)(conn->data_len - conn->request_len)) >= 2) {
+ 			len = buf[1] & 127;
+ 			mask_len = (buf[1] & 128) ? 4 : 0;
++			/* Companion accepts masked, final text and control frames only.
++			 * Reject invalid headers before waiting for a mask or payload. */
++			if (conn->connection_type == CONNECTION_TYPE_REQUEST) {
++				unsigned char opcode = buf[0] & 0x0f;
++				if ((mask_len == 0) || ((buf[0] & 0x70) != 0)
++				    || ((buf[0] & 0x80) == 0)
++				    || ((opcode != 1) && (opcode != 8)
++				        && (opcode != 9) && (opcode != 10))
++				    || ((opcode >= 8) && (len > 125))
++				    || ((opcode == 8) && (len == 1))) {
++					mg_websocket_write(conn, 8, "\x03\xea", 2);
++					break;
++				}
++			}
+ 			if ((len < 126) && (body_len >= mask_len)) {
+ 				/* inline 7-bit length field */
+ 				data_len = len;
+@@ -13230,6 +13244,14 @@ read_websocket(struct mg_connection *conn,
+ 				break;
+ 			}
+ 
++			/* RFC 6455 requires the shortest encoding of the payload length. */
++			if ((conn->connection_type == CONNECTION_TYPE_REQUEST)
++			    && ((((buf[1] & 127) == 126) && (data_len < 126))
++			        || (((buf[1] & 127) == 127) && (data_len <= 0xffff)))) {
++				mg_websocket_write(conn, 8, "\x03\xea", 2);
++				break;
++			}
++
+ 			/* Allocate space to hold websocket payload */
+ 			unsigned char *data = mem;
+ 

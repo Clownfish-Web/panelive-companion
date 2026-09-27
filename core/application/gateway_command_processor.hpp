@@ -121,6 +121,7 @@ private:
 
   bool
   queue_operation(Device device, std::string action, CommandPlan plan, std::string operation_id);
+  bool authorized(const Device& device) const;
   void operation_loop();
   void run_collection_selection(const QueuedCollectionSelection& operation);
   void run_operation(const Device& device,

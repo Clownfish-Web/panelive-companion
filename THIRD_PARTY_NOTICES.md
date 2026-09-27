@@ -9,11 +9,16 @@ the CMake integration. The build inputs are described in [the build manual](docs
 
 ## Shipped runtime or compiled-in components
 
+Developer-only asset authoring: Skia CanvasKit 0.42.0 (BSD-3-Clause) converts the repository's
+Dispatch line icons to filled SVG outlines. No CanvasKit code is shipped or linked.
+Ordinary builds use the committed SVG files and need no asset-authoring tools.
+The upstream license is [Skia LICENSE](https://github.com/google/skia/blob/main/LICENSE).
+
 | Component | Resolved version | License | Form in the Windows package | License pointer |
 | --- | --- | --- | --- | --- |
-| CivetWeb | 1.16, vcpkg port revision 2 | MIT | `civetweb.dll`, `civetweb-cpp.dll` | `licenses/civetweb/copyright` |
+| CivetWeb | 1.16, repository overlay port revision 9 | MIT | `civetweb.dll`, `civetweb-cpp.dll` | `licenses/civetweb/copyright` |
 | FFmpeg | 9.0.1, repository overlay port revision 0 | LGPL-2.1-or-later | Codec, format, and scaling libraries used by the vMix SRT receiver | `licenses/ffmpeg/copyright` |
-| libdatachannel | 0.24.5 | MPL-2.0 | `datachannel.dll` | `licenses/libdatachannel/copyright` |
+| libdatachannel | 0.24.5, repository overlay port revision 2 | MPL-2.0 | `datachannel.dll` | `licenses/libdatachannel/copyright` |
 | libjuice | 1.7.2 | MPL-2.0 | `juice.dll`; ICE transport used by libdatachannel | `licenses/libjuice/copyright` |
 | libvpx | 1.16.0, vcpkg port revision 2 | BSD-3-Clause | Statically linked VP8 encoder | `licenses/libvpx/copyright` |
 | Opus | 1.5.2, vcpkg port revision 1 | BSD-3-Clause | `opus.dll`; monitor-audio encoder | `licenses/opus/copyright` |
@@ -29,7 +34,12 @@ the CMake integration. The build inputs are described in [the build manual](docs
 | zlib | 1.3.2, vcpkg port revision 1 | Zlib | `z.dll` | `licenses/zlib/copyright` |
 | Windows App SDK / WinUI 3 | 2.4.0 | Microsoft Software License Terms | Shared Windows App Runtime installed by setup; application-local bootstrap DLL | `licenses/windows-app-sdk/copyright` |
 
-No local modifications are made to the source files of libdatachannel or libjuice by this repository. Recipients may obtain the exact upstream source revisions through the pinned vcpkg baseline and package metadata. MPL-2.0 source-availability obligations continue to apply to the MPL-covered files.
+The [libdatachannel overlay](cmake/overlays/libdatachannel/README.md) modifies SCTP receive-limit
+and PPID handling in the MPL-covered `src/impl/sctptransport.cpp` and `.hpp`. Its portfile pins the upstream source
+revision and archive hash; the directory contains every applied patch. Make that corresponding
+source and these modifications available to binary recipients. This repository makes no local
+source modifications to libjuice; its exact source revision is pinned by the vcpkg baseline and
+package metadata. MPL-2.0 source-availability obligations continue to apply to MPL-covered files.
 
 libqrencode is shipped as a separate DLL so recipients can replace/relink that LGPL-covered library. The library's complete LGPL terms accompany the binary package at the pointer above.
 
@@ -62,12 +72,18 @@ dependencies; retain those when redistributing that build.
 The separately built [OBS helper](obs-plugin/LICENSE) is GPL-2.0-or-later and includes
 the complete GPL version 2 text. It links to the user's OBS and Qt installation, not
 the Apache-licensed Companion. OBS and Qt are not bundled in this source repository.
-Linux builds statically link the distribution's libjpeg-turbo archive so Ubuntu and Debian
+Debian-layout Linux builds statically link the distribution's libjpeg-turbo archive so Ubuntu and Debian
 JPEG SONAME differences do not restrict the Companion package. Its complete license notice is
 installed as `share/panelive-companion/licenses/libjpeg-turbo.txt`.
-Native macOS frameworks and Linux GTK/libadwaita, Avahi, Secret Service, PulseAudio,
+The Arch/Omarchy path dynamically links the distribution's libjpeg-turbo and includes its installed
+license notice at that same path; it does not bundle a foreign JPEG library.
+Native macOS frameworks and Linux GTK/libadwaita, librsvg, Avahi, Secret Service, PulseAudio,
 and Qt dependencies are supplied by the operating system or package manager
 and retain their upstream licenses.
+The Debian/Ubuntu Companion requires the distribution's `librsvg2-common` SVG image loader
+for its embedded Dispatch icons. librsvg is LGPL-2.0-or-later; the package manager supplies
+the runtime and its full notice at `/usr/share/doc/librsvg2-common/copyright`. No librsvg
+binary or source is bundled, and no additional library is linked into the Companion.
 
 The version table above records the pinned Windows dependency set, not a claim that
 every component is shipped on every platform. Optional adapters change the actual

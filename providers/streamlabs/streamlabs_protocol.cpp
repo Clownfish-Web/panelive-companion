@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <studio_remote/protocol/provider_json.hpp>
 #include <unordered_set>
 
 namespace studio_remote::streamlabs
@@ -124,9 +125,9 @@ RpcMessage parse_message(std::string_view message)
   json parsed;
   try
   {
-    parsed = json::parse(message);
+    parsed = parse_provider_json_object(message, maximum_message_bytes);
   }
-  catch (const json::exception&)
+  catch (const std::invalid_argument&)
   {
     throw std::runtime_error("Streamlabs returned malformed JSON");
   }

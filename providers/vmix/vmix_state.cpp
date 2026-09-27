@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <stdexcept>
 #include <studio_remote/build/vmix_category_colors.hpp>
+#include <studio_remote/common/utf8.hpp>
 #include <unordered_map>
 
 namespace studio_remote::vmix
@@ -14,6 +15,24 @@ namespace
 {
 
 using Attributes = std::unordered_map<std::string, std::string>;
+
+bool xml_character(std::uint32_t value)
+{
+  return value == 0x9 || value == 0xa || value == 0xd || (value >= 0x20 && value <= 0xd7ff) ||
+         (value >= 0xe000 && value <= 0xfffd) || (value >= 0x10000 && value <= 0x10ffff);
+}
+
+void validate_xml_characters(std::string_view text)
+{
+  // UTF-8 scalar validation rejects surrogates and out-of-range encodings. XML additionally
+  // excludes most ASCII controls and the two BMP noncharacters, including in ignored fields.
+  if (!valid_utf8(text) || text.find("\xef\xbf\xbe") != std::string_view::npos ||
+      text.find("\xef\xbf\xbf") != std::string_view::npos ||
+      std::any_of(text.begin(),
+                  text.end(),
+                  [](unsigned char byte) { return byte < 0x20 && !xml_character(byte); }))
+    throw std::runtime_error("vMix XML contains invalid character data");
+}
 
 void append_utf8(std::string& output, std::uint32_t value)
 {
@@ -69,14 +88,15 @@ std::string decode_xml(std::string_view value)
       std::uint32_t code_point = 0;
       auto digits = entity.substr(1);
       int base = 10;
-      if (!digits.empty() && (digits.front() == 'x' || digits.front() == 'X'))
+      if (!digits.empty() && digits.front() == 'x')
       {
         digits.remove_prefix(1);
         base = 16;
       }
       const auto parsed =
           std::from_chars(digits.data(), digits.data() + digits.size(), code_point, base);
-      if (parsed.ec != std::errc{} || parsed.ptr != digits.data() + digits.size())
+      if (parsed.ec != std::errc{} || parsed.ptr != digits.data() + digits.size() ||
+          !xml_character(code_point))
         throw std::runtime_error("vMix XML contains an invalid numeric entity");
       append_utf8(result, code_point);
     }
@@ -110,8 +130,11 @@ Attributes parse_attributes(std::string_view tag)
     const auto value_end = tag.find(quote, value_start);
     if (value_end == std::string_view::npos)
       throw std::runtime_error("vMix XML contains an unterminated attribute");
-    result.insert_or_assign(std::string(tag.substr(position, name_end - position)),
-                            decode_xml(tag.substr(value_start, value_end - value_start)));
+    if (!result
+             .emplace(std::string(tag.substr(position, name_end - position)),
+                      decode_xml(tag.substr(value_start, value_end - value_start)))
+             .second)
+      throw std::runtime_error("vMix XML contains duplicate attributes");
     position = value_end + 1;
   }
   return result;
@@ -255,6 +278,7 @@ std::string service_kind_from_host(std::string_view host)
 
 State parse_state(std::string_view xml)
 {
+  validate_xml_characters(xml);
   if (xml.find("<vmix") == std::string_view::npos)
     throw std::runtime_error("vMix API did not return a vmix XML document");
 
@@ -352,6 +376,7 @@ State parse_state(std::string_view xml)
 
 void apply_local_preset_metadata(State& state, std::string_view preset_xml)
 {
+  validate_xml_characters(preset_xml);
   // Category is an input property. Zero means that no color is assigned.
   std::unordered_map<std::string, std::string> colors_by_key;
   for (const auto& [attributes, ignored] : elements(preset_xml, "Input"))

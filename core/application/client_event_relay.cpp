@@ -21,6 +21,11 @@ ClientEventConnection::ClientEventConnection(ClientEventOrigin origin,
       failure_(std::move(failure)), writer_thread_([this] { write_loop(); })
 {
 }
+bool ClientEventConnection::admit_frame(std::size_t payload_bytes, Clock::time_point now) noexcept
+{
+  return ready() && frame_budget_.admit(payload_bytes, now);
+}
+
 bool ClientEventConnection::submit(ClientEventNotification notification)
 {
   if (!active_.load(std::memory_order_acquire) || !ready_.load(std::memory_order_acquire))

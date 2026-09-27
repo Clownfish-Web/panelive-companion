@@ -2,7 +2,7 @@
 
 #include <studio_remote/media/video_frame_source.hpp>
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 #include <optional>
 
 namespace studio_remote::windows
@@ -27,7 +27,7 @@ public:
 
 private:
   WindowsVideoFrames() = default;
-  HANDLE handle_ = nullptr;
+  IpcMappingHandle handle_;
   const ipc::VideoFrameMapping* mapping_ = nullptr;
 };
 } // namespace studio_remote::windows

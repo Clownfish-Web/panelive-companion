@@ -5,6 +5,7 @@
 #include <Windows.h>
 
 #include <functional>
+#include <string_view>
 
 namespace studio_remote::windows
 {
@@ -25,6 +26,9 @@ public:
 
   WindowsTrayIcon(const WindowsTrayIcon&) = delete;
   WindowsTrayIcon& operator=(const WindowsTrayIcon&) = delete;
+
+  // UI-thread delivery through the existing notification-area icon. No queued replay.
+  void show_notification(std::string_view title, std::string_view body) noexcept;
 
 private:
   static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);

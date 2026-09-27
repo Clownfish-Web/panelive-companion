@@ -34,15 +34,14 @@ class WebSocketFrameRouter
 public:
   using FrameWriter = std::function<int(int opcode, std::string_view payload)>;
 
-  WebSocketFrameDisposition route(int bits,
-                                  std::string_view payload,
-                                  const FrameWriter& writer);
+  WebSocketFrameDisposition route(int bits, std::string_view payload, const FrameWriter& writer);
   void connection_opened();
   void connection_closed();
   void transport_error();
   WebSocketTransportDiagnostics diagnostics() const;
 
 private:
+  WebSocketFrameDisposition close_peer(std::string_view payload, const FrameWriter& writer);
   static std::uint64_t unix_time_ms();
   static std::string sanitized_close_reason(std::string_view payload);
 

@@ -108,7 +108,8 @@ LRESULT WindowsTrayIcon::handle_message(HWND window, UINT message, WPARAM wparam
   }
   if (message == tray_callback_message)
   {
-    if (LOWORD(lparam) == WM_LBUTTONUP || LOWORD(lparam) == NIN_SELECT)
+    if (LOWORD(lparam) == WM_LBUTTONUP || LOWORD(lparam) == NIN_SELECT ||
+        LOWORD(lparam) == NIN_BALLOONUSERCLICK)
       actions_.open_management();
     else if (LOWORD(lparam) == WM_CONTEXTMENU || LOWORD(lparam) == WM_RBUTTONUP)
       show_menu();
@@ -165,6 +166,30 @@ void WindowsTrayIcon::remove_icon()
   icon.uID = tray_icon_id;
   Shell_NotifyIconW(NIM_DELETE, &icon);
   icon_added_ = false;
+}
+
+void WindowsTrayIcon::show_notification(std::string_view title, std::string_view body) noexcept
+{
+  try
+  {
+    if (!icon_added_)
+      add_icon();
+    NOTIFYICONDATAW icon{sizeof(icon)};
+    icon.hWnd = window_;
+    icon.uID = tray_icon_id;
+    // Connection snapshots become stale quickly. Let the shell discard a busy notification
+    // instead of queueing old transitions, and respect quiet time without playing a sound.
+    icon.uFlags = NIF_INFO | NIF_REALTIME;
+    icon.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND | NIIF_RESPECT_QUIET_TIME;
+    wcsncpy_s(icon.szInfoTitle, winrt::to_hstring(title).c_str(), _TRUNCATE);
+    wcsncpy_s(icon.szInfo, winrt::to_hstring(body).c_str(), _TRUNCATE);
+    if (!icon_added_ || !Shell_NotifyIconW(NIM_MODIFY, &icon))
+      OutputDebugStringW(L"Could not deliver a client connection notification.\n");
+  }
+  catch (...)
+  {
+    OutputDebugStringW(L"Could not prepare a client connection notification.\n");
+  }
 }
 
 void WindowsTrayIcon::show_menu()

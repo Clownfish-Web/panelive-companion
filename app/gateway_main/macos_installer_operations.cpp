@@ -3,6 +3,7 @@
 #include "../../packaging/macos/installer/macos_installation_record.hpp"
 #include "../../packaging/macos/installer/macos_obs_installation.hpp"
 #include "../../platform/macos/platform_services/macos_config.hpp"
+#include "../../platform/macos/platform_services/macos_production_installations.hpp"
 #include "../../platform/macos/platform_services/macos_single_instance.hpp"
 #include "macos_command_line.hpp"
 
@@ -43,10 +44,9 @@ int run_installer_operation(const CommandLine& command_line)
   }
   if (command_line.installer_operation == InstallerOperation::record_installation)
   {
-    if (::geteuid() != 0)
-      throw std::runtime_error("Installation metadata requires the macOS installer");
-    installer::write_installation_record(
-        {"/Applications/panelive-companion.app", obs});
+    if (::geteuid() == 0)
+      throw std::runtime_error("Record installation as the user who runs Companion");
+    installer::write_installation_record({companion_installation_directory(), obs});
     return 0;
   }
   throw std::invalid_argument("No installer operation selected");

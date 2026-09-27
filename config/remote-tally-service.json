@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "healthUrl": "https://panelive.app/api/remote-tally/v1/health",
-  "enrollmentUrl": "https://panelive.app/api/remote-tally/v1/publishers/enroll",
-  "renewalUrl": "https://publish.panelive.app/api/remote-tally/v1/publishers/renew",
-  "managementBaseUrl": "https://publish.panelive.app/api/remote-tally/v1",
-  "publisherWebSocketUrl": "wss://publish.panelive.app/api/remote-tally/v1/ws",
-  "viewerOrigin": "https://panelive.app",
-  "viewerPageBaseUrl": "https://panelive.app/tally",
-  "viewerSessionUrl": "https://panelive.app/api/remote-tally/v1/viewer-sessions",
-  "viewerWebSocketUrl": "wss://panelive.app/api/remote-tally/v1/viewer-ws"
+  "healthUrl": "https://remote-tally.invalid/api/remote-tally/v1/health",
+  "enrollmentUrl": "https://remote-tally.invalid/api/remote-tally/v1/publishers/enroll",
+  "renewalUrl": "https://publish.remote-tally.invalid/api/remote-tally/v1/publishers/renew",
+  "managementBaseUrl": "https://publish.remote-tally.invalid/api/remote-tally/v1",
+  "publisherWebSocketUrl": "wss://publish.remote-tally.invalid/api/remote-tally/v1/ws",
+  "viewerOrigin": "https://remote-tally.invalid",
+  "viewerPageBaseUrl": "https://remote-tally.invalid/tally",
+  "viewerSessionUrl": "https://remote-tally.invalid/api/remote-tally/v1/viewer-sessions",
+  "viewerWebSocketUrl": "wss://remote-tally.invalid/api/remote-tally/v1/viewer-ws"
 }

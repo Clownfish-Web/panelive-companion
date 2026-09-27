@@ -76,6 +76,7 @@ std::string identifier_text(NSString* value, const char* missing_message)
              isRefresh:(BOOL)refresh;
 - (void)updatePresentation;
 - (void)publishState:(const studio_remote::ManagementUiState&)state;
+- (void)observeClients:(studio_remote::macos::ManagementClientsObserver)observer;
 @end
 
 @implementation PLManagementBridge
@@ -83,6 +84,7 @@ std::string identifier_text(NSString* value, const char* missing_message)
   std::unique_ptr<ManagementUiController> _controller;
   studio_remote::macos::ManagementWorker* _worker;
   std::shared_ptr<PendingPresentation> _pendingPresentation;
+  studio_remote::macos::ManagementClientsObserver _clientsObserver;
 }
 
 - (instancetype)initWithController:(std::unique_ptr<ManagementUiController>)controller
@@ -208,6 +210,16 @@ std::string identifier_text(NSString* value, const char* missing_message)
   _identificationPending = state.identification.has_value();
   _identificationTitle =
       state.identification ? studio_remote::macos::native_text(state.identification->title) : @"";
+  if (_clientsObserver && state.last_error.empty())
+    _clientsObserver(state.clients);
+}
+
+- (void)observeClients:(studio_remote::macos::ManagementClientsObserver)observer
+{
+  if (![NSThread isMainThread])
+    throw std::logic_error("Client observation must be registered on the main thread");
+  if (self.valid)
+    _clientsObserver = std::move(observer);
 }
 
 - (void)performCommand:(const studio_remote::macos::ManagementWorker::Command&)command
@@ -593,6 +605,7 @@ std::string identifier_text(NSString* value, const char* missing_message)
   _worker = nullptr;
   _pendingPresentation.reset();
   _presentationChanged = nil;
+  _clientsObserver = {};
   _pairing = nil;
   _teleprompter = studio_remote::macos::teleprompter_state({});
   _navigation = @[];
@@ -605,6 +618,11 @@ std::string identifier_text(NSString* value, const char* missing_message)
 
 namespace studio_remote::macos
 {
+void observe_management_clients(PLManagementBridge* bridge, ManagementClientsObserver observer)
+{
+  [bridge observeClients:std::move(observer)];
+}
+
 PLManagementBridge* make_async_management_bridge(ManagementWorker& worker)
 {
   if (![NSThread isMainThread])

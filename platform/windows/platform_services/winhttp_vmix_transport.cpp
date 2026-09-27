@@ -1,11 +1,8 @@
 #include "winhttp_vmix_transport.hpp"
 
-#include <algorithm>
-#include <array>
 #include <cctype>
-#include <iomanip>
-#include <sstream>
 #include <stdexcept>
+#include <string>
 
 namespace studio_remote::windows
 {
@@ -181,6 +178,10 @@ std::string WinHttpVmixTransport::get(std::string_view path)
                            &status_size,
                            WINHTTP_NO_HEADER_INDEX))
     throw std::runtime_error("Could not read the vMix HTTP response status");
+  // Backend error pages may contain credentials, paths or submitted values. Report only the
+  // status and close the request without reading or propagating that body.
+  if (status != 200)
+    throw std::runtime_error("vMix HTTP request returned status " + std::to_string(status));
   std::string body;
   while (true)
   {
@@ -197,17 +198,6 @@ std::string WinHttpVmixTransport::get(std::string_view path)
     if (!WinHttpReadData(request, body.data() + offset, available, &received))
       throw std::runtime_error("Could not read the vMix HTTP response body");
     body.resize(offset + received);
-  }
-  if (status != 200)
-  {
-    body.erase(std::remove_if(body.begin(),
-                              body.end(),
-                              [](unsigned char character) { return character < 0x20; }),
-               body.end());
-    if (body.size() > 200)
-      body.resize(200);
-    throw std::runtime_error("vMix HTTP request returned status " + std::to_string(status) +
-                             (body.empty() ? std::string{} : ": " + body));
   }
   return body;
 }

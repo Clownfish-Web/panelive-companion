@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 #include <mutex>
 #include <studio_remote/ipc/obs_runtime_capabilities_mapping.hpp>
 
@@ -23,7 +23,7 @@ private:
   void close() const;
 
   mutable std::mutex mutex_;
-  mutable HANDLE mapping_handle_ = nullptr;
+  mutable windows::IpcMappingHandle mapping_handle_;
   mutable const ipc::ObsRuntimeCapabilitiesMapping* mapping_ = nullptr;
 };
 

@@ -7,11 +7,19 @@ require_closed_applications
 
 application='/Applications/panelive-companion.app'
 executable="$application/Contents/MacOS/panelive-companion"
-support='/Library/Application Support/panelive-companion'
+support='/Library/Application Support/panelive-companion/installation'
 obs_directory=$(as_installer_user "$executable" --detect-obs-installation)
 
-# Reuse the standalone installer's validation, user-owned placement and rollback unchanged.
-as_installer_user /bin/bash "$support/Install-ObsPlugin.sh" --obs-directory "$obs_directory"
+as_installer_user /bin/bash -c 'mkdir -p "$HOME/Library/Preferences"'
+as_installer_user "$executable" --record-installation --obs-installation "$obs_directory"
+# Installer already authorized shared placement. Never request a second elevation here.
+install_shared_integration "$support"
+# OBS discovers external bundles through the current user's Application Support directory.
+as_installer_user /bin/bash -c '
+  set -euo pipefail
+  source "$1/Install-ObsPlugin.sh"
+  register_plugin_link "/Library/Application Support/obs-studio/plugins/panelive-companion-obs-plugin.plugin" \
+    "$HOME/Library/Application Support/obs-studio/plugins/panelive-companion-obs-plugin.plugin"
+' installer-registration "$support"
 as_installer_user "$executable" --initialize-installation
-"$executable" --record-installation --obs-installation "$obs_directory"
 as_installer_user /usr/bin/open "$application" --args --open-management

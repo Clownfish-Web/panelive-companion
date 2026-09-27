@@ -1,6 +1,6 @@
 #include "windows_obs_quick_transition_control.hpp"
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 #include <studio_remote/obs/obs_quick_transition_protocol.hpp>
 
 #include <stdexcept>
@@ -18,18 +18,16 @@ public:
   MappingView()
   {
     constexpr DWORD access = FILE_MAP_READ | FILE_MAP_WRITE;
-    handle_ = OpenFileMappingW(access, FALSE, ipc::quick_transition_control_mapping_name);
+    handle_ = open_owner_restricted_mapping(access, ipc::quick_transition_control_mapping_name);
     if (handle_)
       mapping_ = static_cast<ipc::QuickTransitionControlMapping*>(
-          MapViewOfFile(handle_, access, 0, 0, sizeof(ipc::QuickTransitionControlMapping)));
+          MapViewOfFile(handle_.get(), access, 0, 0, sizeof(ipc::QuickTransitionControlMapping)));
   }
 
   ~MappingView()
   {
-    if (mapping_)
-      UnmapViewOfFile(mapping_);
-    if (handle_)
-      CloseHandle(handle_);
+    if (mapping_ && !UnmapViewOfFile(mapping_))
+      OutputDebugStringW(L"Could not unmap OBS quick-transition control\n");
   }
 
   MappingView(const MappingView&) = delete;
@@ -46,7 +44,7 @@ public:
   }
 
 private:
-  HANDLE handle_ = nullptr;
+  IpcMappingHandle handle_;
   ipc::QuickTransitionControlMapping* mapping_ = nullptr;
 };
 

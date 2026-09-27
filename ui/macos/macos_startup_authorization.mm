@@ -16,7 +16,9 @@ bool request_keychain_startup_authorization()
        "adapters. It also stores the private key for secure mobile connections in Keychain.\n\n"
        "Choose Continue to let macOS request access to the required items. If a Keychain dialog "
        "asks for a password, use your Mac login/Keychain password.\n\n"
-       "An updated development build may need your approval again.";
+       "For Companion's saved items, choose Always Allow to remember access. Allow grants "
+       "access only for that request. Items from older development builds may need this "
+       "one-time approval.";
   [alert addButtonWithTitle:@"Continue"];
   [alert addButtonWithTitle:@"Quit"].keyEquivalent = @"\x1b";
   [NSApp activateIgnoringOtherApps:YES];

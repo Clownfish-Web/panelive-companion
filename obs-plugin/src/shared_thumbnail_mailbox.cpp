@@ -1,5 +1,7 @@
 #include "shared_thumbnail_mailbox.hpp"
 
+#include "shared_thumbnail_publication.hpp"
+
 #ifdef __APPLE__
 #include "../../platform/macos/ipc/macos_ipc_names.hpp"
 #endif
@@ -129,7 +131,7 @@ std::optional<ThumbnailRequest> SharedThumbnailMailbox::request_after(std::uint6
 
 void SharedThumbnailMailbox::publish(std::uint64_t sequence,
                                      ipc::ThumbnailStatus status,
-                                     const std::uint8_t* pixels,
+                                     std::span<const std::uint8_t> pixels,
                                      std::uint32_t width,
                                      std::uint32_t height,
                                      std::uint32_t stride,
@@ -137,20 +139,8 @@ void SharedThumbnailMailbox::publish(std::uint64_t sequence,
 {
   if (!mapping_)
     return;
-  const auto size = static_cast<std::size_t>(stride) * height;
-  if (status != ipc::ThumbnailStatus::success || !pixels || size > ipc::maximum_thumbnail_bytes)
-  {
-    width = height = stride = 0;
-  }
-  mapping_->status = static_cast<std::uint32_t>(status);
-  mapping_->width = width;
-  mapping_->height = height;
-  mapping_->stride = stride;
-  mapping_->data_size = static_cast<std::uint32_t>(static_cast<std::size_t>(stride) * height);
-  mapping_->captured_ns = captured_ns;
-  if (mapping_->data_size)
-    std::memcpy(mapping_->pixels, pixels, mapping_->data_size);
-  mapping_->response_sequence.store(sequence, std::memory_order_release);
+  publish_thumbnail_response(
+      *mapping_, sequence, status, pixels, width, height, stride, captured_ns);
 }
 
 } // namespace studio_remote::obs_plugin

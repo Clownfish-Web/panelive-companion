@@ -3,6 +3,9 @@ import SwiftUI
 @MainActor
 struct ManagementShell: View {
     @ObservedObject var model: ManagementShellModel
+    @State private var navigationCollapsed = false
+    private let collapseImage = ManagementShell.navigationImage(collapsed: false)
+    private let expandImage = ManagementShell.navigationImage(collapsed: true)
     private let brandImage: NSImage = {
         guard let image = PLManagementBrandImage() else {
             preconditionFailure("The embedded PaneLive logo is invalid")
@@ -69,17 +72,39 @@ struct ManagementShell: View {
                     .scaledToFit()
                     .frame(width: 32, height: 32)
                     .accessibilityHidden(true)
-                Text("PaneLive").font(.system(size: 20, weight: .semibold))
+                if !navigationCollapsed {
+                    Text("PaneLive").font(.system(size: 20, weight: .semibold))
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 18)
+            Button {
+                navigationCollapsed.toggle()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(nsImage: navigationCollapsed ? expandImage : collapseImage)
+                        .renderingMode(.template)
+                        .frame(width: 20)
+                        .accessibilityHidden(true)
+                    if !navigationCollapsed { Text("Collapse menu") }
+                }
+                .frame(maxWidth: .infinity, minHeight: 32,
+                       alignment: navigationCollapsed ? .center : .leading)
+                .padding(.horizontal, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(navigationCollapsed ? "Expand navigation" : "Collapse navigation")
+            .accessibilityLabel(navigationCollapsed ? "Expand navigation" : "Collapse navigation")
+            .accessibilityValue(navigationCollapsed ? "Collapsed" : "Expanded")
+            .accessibilityIdentifier("navigation-toggle")
             navigation(footer: false)
             Spacer()
             navigation(footer: true)
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 16)
-        .frame(width: 232)
+        .frame(width: navigationCollapsed ? 76 : 232)
         .frame(maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -87,17 +112,31 @@ struct ManagementShell: View {
     private func navigation(footer: Bool) -> some View {
         ForEach(model.bridge.navigation.filter { $0.footer == footer }, id: \.page.rawValue) { item in
             Button { model.select(item.page) } label: {
-                Label(item.title, systemImage: item.symbol)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 10) {
+                    Image(systemName: item.symbol).frame(width: 20)
+                        .accessibilityHidden(true)
+                    if !navigationCollapsed { Text(item.title) }
+                }
+                    .frame(maxWidth: .infinity,
+                           alignment: navigationCollapsed ? .center : .leading)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
                     .background(model.page == item.page ? Color.accentColor.opacity(0.22) : .clear,
                                 in: RoundedRectangle(cornerRadius: 6))
             }
             .buttonStyle(.plain)
+            .help(item.title)
+            .accessibilityLabel(item.title)
             .accessibilityIdentifier(item.automationIdentifier)
             .accessibilityAddTraits(model.page == item.page ? .isSelected : [])
         }
+    }
+
+    private static func navigationImage(collapsed: Bool) -> NSImage {
+        guard let image = PLManagementNavigationToggleImage(collapsed) else {
+            preconditionFailure("The embedded navigation artwork is invalid")
+        }
+        return image
     }
 
     @ViewBuilder
@@ -136,7 +175,7 @@ struct ManagementShell: View {
         switch model.page {
         case .clients:
             if model.bridge.teleprompter.deviceIdentifier.isEmpty {
-                clientsPage
+                ManagementClientsPage(model: model)
             } else {
                 ManagementTeleprompterPage(model: model)
             }
@@ -147,63 +186,7 @@ struct ManagementShell: View {
         case .advancedSettings: advancedPage
         case .diagnostics: diagnosticsPage
         case .about: ManagementAboutPage(buildVersion: model.buildVersion)
-        @unknown default: clientsPage
-        }
-    }
-
-    private var clientsPage: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Clients").font(.system(size: 28, weight: .semibold))
-                    Text("Pair devices and manage access to production backends.")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Identify all") {
-                    model.bridge.identifyAllClients()
-                    model.publishCommandResult()
-                }
-                .disabled(!model.bridge.clients.contains { $0.connected })
-                .accessibilityIdentifier("clients-identify-all")
-                Button("Refresh") {
-                    model.bridge.refreshClients()
-                    model.publishCommandResult()
-                }
-                .accessibilityIdentifier("clients-refresh")
-                Button("Pair new client", action: model.pairClient)
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("clients-pair")
-            }
-            ScrollView {
-                VStack(spacing: 18) {
-                    if let pairing = model.bridge.pairing {
-                        ManagementPairingCard(code: pairing, enlarge: model.openPairingPreview)
-                    }
-                    ManagementClientsTable(clients: model.bridge.clients,
-                        sortColumn: model.bridge.clientSortColumn,
-                        sortAscending: model.bridge.clientSortAscending,
-                        sortClients: {
-                            model.bridge.sortClients($0)
-                            model.publishCommandResult()
-                        }, setOperator: {
-                        model.bridge.setOperator($0)
-                        model.publishCommandResult()
-                    }, setViewer: {
-                        model.bridge.setViewer($0)
-                        model.publishCommandResult()
-                    }, identifyClient: {
-                        model.bridge.identifyClient($0)
-                        model.publishCommandResult()
-                    }, forgetClient: {
-                        model.bridge.forgetClient($0)
-                        model.publishCommandResult()
-                    }, openTeleprompter: {
-                        model.bridge.openTeleprompter($0.identifier, name: $0.name)
-                        model.publishCommandResult()
-                    })
-                }
-            }
+        @unknown default: ManagementClientsPage(model: model)
         }
     }
 

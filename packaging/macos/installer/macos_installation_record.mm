@@ -90,8 +90,7 @@ public:
         fail("Could not write installation record");
       contents.remove_prefix(static_cast<std::size_t>(count));
     }
-    // Machine installation metadata is readable by normal Companion users, never writable by them.
-    if (::fchmod(descriptor_.get(), 0644) != 0)
+    if (::fchmod(descriptor_.get(), 0600) != 0)
       fail("Could not set installation record permissions");
   }
 
@@ -162,7 +161,7 @@ void write_installation_record(const InstallationRecord& record,
     if (filename.empty() || filename == "." || filename == ".." ||
         filename.find('\0') != std::string::npos)
       throw std::invalid_argument("Installation record filename is invalid");
-    // The shared Preferences directory is installer-owned externally, not a private config folder.
+    // The installer creates the user's Preferences directory before recording installation.
     const Descriptor directory(
         ::open(record_file.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
     StagedRecord staged(directory.get());

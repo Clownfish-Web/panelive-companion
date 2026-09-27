@@ -71,6 +71,9 @@ void LinuxManagementPagesHost::show(ManagementPage kind, LinuxPageContext contex
   Page transient;
   GtkWidget* page = nullptr;
   const auto& teleprompter = context.controller.teleprompter().state();
+  // Retain interaction only while the roster is selected, not inactive pairing material.
+  if (kind != ManagementPage::clients || !teleprompter.device_id.empty())
+    clients_page_.reset();
   if (!teleprompter.editor && !teleprompter.sharing)
     teleprompter_form_.reset();
   if ((kind == ManagementPage::clients || kind == ManagementPage::teleprompter) &&
@@ -85,6 +88,14 @@ void LinuxManagementPagesHost::show(ManagementPage kind, LinuxPageContext contex
     }
     page = teleprompter_form_.get();
     refresh_linux_teleprompter_page(page, context);
+  }
+  else if (kind == ManagementPage::clients && teleprompter.device_id.empty())
+  {
+    if (!clients_page_)
+      clients_page_ = create(kind, context);
+    else
+      refresh_linux_clients_page(clients_page_.get(), context);
+    page = clients_page_.get();
   }
   else if (editable)
   {

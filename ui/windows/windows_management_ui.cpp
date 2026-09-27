@@ -3,6 +3,8 @@
 #include "windows_tray_icon.hpp"
 #include "winui_management_window.hpp"
 
+#include <studio_remote/ui/management_client_notifications.hpp>
+
 #include "../../platform/windows/platform_services/windows_management_view_adapter.hpp"
 
 #include <MddBootstrap.h>
@@ -138,10 +140,16 @@ public:
             interface_mode, obs_connection_configured, network_recovery_required)),
         startup_port_diagnostics_(std::move(startup_port_diagnostics))
   {
-    callbacks_.clients = [clients = std::move(clients)]
+    callbacks_.clients = [this, clients = std::move(clients)]
     {
-      return clients ? make_management_client_rows(clients(), std::chrono::system_clock::now())
-                     : std::vector<ManagementClientRow>{};
+      auto rows = clients ? make_management_client_rows(clients(), std::chrono::system_clock::now())
+                          : std::vector<ManagementClientRow>{};
+      // Observe only successful snapshots. The initial refresh establishes a silent baseline
+      // before the tray is created; failed providers never look like a mass disconnect.
+      const auto notice = client_notifications_.observe(rows);
+      if (notice && tray_)
+        tray_->show_notification(notice->title, notice->body);
+      return rows;
     };
     callbacks_.pair_client = [pairing = std::move(pairing)]
     { return pairing ? make_pairing(pairing()) : ManagementPairing{}; };
@@ -504,6 +512,8 @@ private:
   std::unique_ptr<ManagementUiController> controller_;
   std::unique_ptr<WinUiManagementWindow> window_;
   std::unique_ptr<WindowsTrayIcon> tray_;
+  // Accessed exclusively on the frontend thread, including while the window is hidden.
+  ManagementClientNotifications client_notifications_;
   winrt::Microsoft::UI::Dispatching::DispatcherQueue dispatcher_{nullptr};
   std::mutex ready_mutex_;
   std::condition_variable ready_cv_;

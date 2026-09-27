@@ -208,7 +208,9 @@ void EnduranceEventLog::write_record(json value)
     ++lost_events_;
     return;
   }
-  auto line = value.dump();
+  // Native observations and decoded URLs can contain non-UTF-8 bytes. Repair only
+  // diagnostic serialization so one observation cannot disable subsequent recording.
+  auto line = value.dump(-1, ' ', false, json::error_handler_t::replace);
   if (line.size() > 65'536)
   {
     ++lost_events_;

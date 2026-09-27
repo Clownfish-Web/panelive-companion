@@ -12,20 +12,22 @@ When Companion opens after setup, macOS may ask permission to access its saved i
   - Streamlabs API token: used to authenticate the Streamlabs adapter's connection.
   - Secure connection identity (tls-identity): the private key and certificate used
     to secure connections from your paired mobile devices.
-Each prompt authorizes access to the named saved item. If macOS requests a password
-in a Keychain dialog, use your Mac login/Keychain password, not your OBS password or
-Streamlabs token. Denying access prevents Companion from using that item.
-This development build may ask again after an update because its app signature changes.
+The app is signed with a stable Apple team identity. Ordinary updates using that identity
+should not request access again. Items created by an older ad-hoc development build may
+still require a one-time trust repair. In a Keychain dialog for Companion's saved item,
+choose Always Allow to remember access; Allow grants access only for that request.
+Use your Mac login/Keychain password, not your OBS password or Streamlabs token.
+Denying access prevents Companion from using that item. Setup never resets these secrets.
 
-Choose Install and authorize the normal macOS installer dialog. Setup automatically:
+Setup installs the app and shared OBS helper with one administrator approval:
 
-  - Installs or replaces panelive-companion.app in Applications.
-  - Installs the OBS plugin into the logged-in user's Library, using whole-bundle
-    replacement with rollback. OBS.app and its profiles and scenes are preserved.
-  - Creates missing Companion settings with OBS at 127.0.0.1:4455,
-    Streamlabs at 127.0.0.1:59650, and the Companion listener on port 7443.
+  - Installs or replaces panelive-companion.app in /Applications, visible in Finder.
+  - Updates the shared OBS plugin using the same authorization, with whole-bundle
+    replacement and rollback. OBS.app, profiles and scenes are preserved.
+  - Creates missing Companion settings for the logged-in user with OBS at
+    127.0.0.1:4455, Streamlabs at 127.0.0.1:59650, and the listener on port 7443.
   - Always includes PaneLive Teleprompter. It is required and cannot be deselected.
-  - Records the installed integrations and opens Companion for that user.
+  - Records integration metadata and opens Companion as the logged-in user.
 
 Existing Companion settings, credentials, identity and paired clients are preserved.
 Login startup remains under your control in Companion settings.
@@ -36,8 +38,13 @@ On a fresh installation, finish authentication on the Adapters page:
 The installer never embeds a shared password or token and does not change backend settings.
 If you use different ports, edit them on the Adapters page.
 
-The OBS helper is installed automatically at:
-~/Library/Application Support/obs-studio/plugins/panelive-companion-obs-plugin.plugin
+The shared OBS helper is installed automatically at:
+/Library/Application Support/obs-studio/plugins/panelive-companion-obs-plugin.plugin
+A link in ~/Library/Application Support/obs-studio/plugins makes it discoverable by OBS.
+Settings, credentials and paired clients belong to each user separately.
+
+Before replacing an older personal installation, remove its app from ~/Applications
+while preserving your Companion profile and Keychain items. Do not keep two app copies.
 No separate plugin installation command is required.
 
 This development package is unsigned and not notarized. The app and OBS helper retain
@@ -46,4 +53,8 @@ System Settings > Privacy & Security.
 
 The Companion is Apache-2.0; the separate OBS helper is GPL-2.0-or-later.
 Licenses, notices and the helper reinstall tool are available after installation at:
-/Library/Application Support/panelive-companion
+/Library/Application Support/panelive-companion/installation
+
+To remove the app, quit Companion and move panelive-companion from Finder's Applications
+folder to Trash. This preserves your settings, paired clients and saved Keychain items.
+The separately installed shared OBS helper remains available to other users.

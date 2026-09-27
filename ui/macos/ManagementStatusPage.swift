@@ -13,13 +13,8 @@ struct ManagementStatusPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Status").font(.system(size: 28, weight: .semibold))
-                    Text("Review Companion health and control production adapters.")
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
+            ManagementPageHeading(title: "Status",
+                subtitle: "Review Companion health and control production adapters.") {
                 Button("Shutdown Companion") { confirmingShutdown = true }
                     .accessibilityIdentifier("shutdown-companion")
             }

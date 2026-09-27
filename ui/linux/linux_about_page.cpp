@@ -42,14 +42,25 @@ GtkWidget* make_linux_about_page(std::string_view version)
   gtk_image_set_pixel_size(GTK_IMAGE(application_icon), 72);
   gtk_widget_set_valign(application_icon, GTK_ALIGN_START);
   append(heading, application_icon);
-  append(heading, section_title("PaneLive Companion"));
-  append(heading, badge("Beta", "warning"));
+  auto* identity = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+  gtk_widget_set_hexpand(identity, TRUE);
+  auto* product_name = section_title("PaneLive Companion");
+  gtk_label_set_wrap_mode(GTK_LABEL(product_name), PANGO_WRAP_WORD);
+  append(identity, product_name);
+  auto* release_badge = badge("Beta", "warning");
+  gtk_widget_set_halign(release_badge, GTK_ALIGN_START);
+  gtk_widget_set_valign(release_badge, GTK_ALIGN_START);
+  append(identity, release_badge);
+  append(heading, identity);
   append(product, heading);
   append(product, description("Version " + std::string(version)));
   append(product,
          description("Native sidecar gateway for secure remote production monitoring and "
                      "control."));
-  append(product, gtk_label_new("Licensed under the Apache License 2.0."));
+  auto* product_license = gtk_label_new("Licensed under the Apache License 2.0.");
+  gtk_label_set_wrap(GTK_LABEL(product_license), TRUE);
+  gtk_label_set_xalign(GTK_LABEL(product_license), 0.0F);
+  append(product, product_license);
   append(product, description("Copyright 2026 Clownfish Web Artur Cichosz and contributors."));
   append(result, card(product));
 

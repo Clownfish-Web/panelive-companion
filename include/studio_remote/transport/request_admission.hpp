@@ -15,6 +15,7 @@ enum class RequestScope
   pairing,
   authentication,
   websocket,
+  websocket_resync,
   critical_control,
   control,
   state,
@@ -36,6 +37,7 @@ enum class RequestConcurrencyPool
   unrestricted,
   background,
   teleprompter,
+  websocket,
   count
 };
 
@@ -59,10 +61,13 @@ public:
   static constexpr std::size_t maximum_background_requests_per_device = 2;
   static constexpr std::size_t maximum_teleprompter_requests = 32;
   static constexpr std::size_t maximum_teleprompter_requests_per_device = 8;
+  static constexpr std::size_t maximum_websocket_connections = 32;
+  static constexpr std::size_t maximum_websocket_connections_per_device = 2;
   static constexpr std::size_t maximum_authenticated_principals = 1024;
   static constexpr std::size_t maximum_public_principals = 1024;
 
   /// Borrowed owner must outlive every reservation. HTTP shutdown joins callbacks first.
+  /// WebSocket reservations last from upgrade admission through native connection close.
   class RequestReservation
   {
   public:

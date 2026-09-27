@@ -7,6 +7,8 @@
 #include <deque>
 #include <rtc/rtc.hpp>
 #include <studio_remote/obs/obs_adapter.hpp>
+#include <studio_remote/obs/obs_diagnostic_events.hpp>
+#include <studio_remote/obs/obs_pending_requests.hpp>
 #include <unordered_map>
 
 namespace studio_remote::linux
@@ -43,11 +45,9 @@ private:
   bool connect_once(std::uint64_t configuration_revision);
   std::optional<std::string> receive_message(std::chrono::milliseconds timeout);
   bool send_message(std::string message);
-  void dispatch(const json& message);
+  void dispatch(std::string_view message);
   void close_socket();
-  std::string authentication(const json& data, std::string_view password) const;
   void set_error(std::string message);
-  void emit_diagnostic_event(std::string_view event, json details) const;
 
   mutable std::mutex mutex_;
   std::condition_variable socket_cv_;
@@ -63,13 +63,12 @@ private:
   std::atomic<bool> connected_{false};
   std::atomic<std::uint64_t> configuration_revision_{0};
   std::thread thread_;
-  mutable std::mutex pending_mutex_;
   mutable std::mutex quick_transition_mutex_;
   std::unordered_map<std::string, std::string> quick_transition_backend_names_;
   std::unordered_map<std::string, std::int32_t> quick_transition_native_ids_;
-  std::unordered_map<std::string, std::promise<json>> pending_;
+  ObsPendingRequests pending_;
+  ObsDiagnosticEvents diagnostics_;
   EventCallback event_handler_;
   ConnectionCallback connection_handler_;
-  DiagnosticEventHandler diagnostic_event_handler_;
 };
 } // namespace studio_remote::linux

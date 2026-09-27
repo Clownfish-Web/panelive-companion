@@ -73,50 +73,18 @@ verify_plugin_bundle() {
   /usr/bin/codesign --verify --strict "$bundle"
 }
 
-replace_plugin_bundle() (
-  # A signed macOS bundle must be replaced as a unit, without resources left from an older build.
-  # This subshell owns its private staging directory and rollback through an EXIT trap.
-  local source="$1" installed="$2"
-  local parent transaction staged previous
-  local committed=no placed=no
-  parent=$(dirname "$installed")
-  transaction=$(/usr/bin/mktemp -d "$parent/.panelive-companion-obs-plugin.XXXXXXXX") || exit 1
-  staged="$transaction/panelive-companion-obs-plugin.plugin"
-  previous="$transaction/previous/panelive-companion-obs-plugin.plugin"
-  finish_plugin_replacement() {
-    local result="$1"
-    trap - EXIT
-    if [[ "$committed" != yes ]]; then
-      if [[ "$placed" == yes ]]; then
-        /bin/rm -rf -- "$installed" || exit 1
-      fi
-      if [[ -e "$previous" ]]; then
-        if ! /bin/mv -- "$previous" "$installed"; then
-          printf '%s\n' "Could not restore the previous plugin; retained at $previous" >&2
-          exit 1
-        fi
-      fi
-    fi
-    /bin/rm -rf -- "$transaction" || exit 1
-    exit "$result"
-  }
-  trap 'finish_plugin_replacement "$?"' EXIT
-  trap 'exit 129' HUP
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
-  /usr/bin/ditto "$source" "$staged" || exit 1
-  verify_plugin_bundle "$staged" || exit 1
-  if [[ -e "$installed" ]]; then
-    /bin/mkdir "$transaction/previous" || exit 1
-    /bin/mv -- "$installed" "$previous" || exit 1
+register_plugin_link() {
+  local shared="$1" installed="$2"
+  if [[ -L "$installed" && "$(/usr/bin/readlink "$installed")" == "$shared" ]]; then
+    return 0
   fi
-  /bin/mv -- "$staged" "$installed" || exit 1
-  placed=yes
-  verify_plugin_bundle "$installed" || exit 1
-  /usr/bin/cmp -s "$source/Contents/MacOS/panelive-companion-obs-plugin" \
-    "$installed/Contents/MacOS/panelive-companion-obs-plugin" || exit 1
-  committed=yes
-)
+  if [[ -e "$installed" || -L "$installed" ]]; then
+    printf '%s\n' 'Remove the previous user OBS helper before registering the shared helper.' >&2
+    return 1
+  fi
+  /bin/mkdir -p -- "$(dirname "$installed")" || return 1
+  /bin/ln -s -- "$shared" "$installed"
+}
 
 install_obs_plugin() {
   local package_directory="$1" obs_directory="$2" application_support="$3"
@@ -151,12 +119,19 @@ install_obs_plugin() {
   verify_obs_compatibility "$obs_directory" \
     "$source/Contents/MacOS/panelive-companion-obs-plugin" || return 1
   installed="$application_support/obs-studio/plugins/panelive-companion-obs-plugin.plugin"
-  if [[ -L "$installed" || ( -e "$installed" && ! -d "$installed" ) ]]; then
-    printf '%s\n' 'The existing OBS plugin destination is not a regular bundle directory.' >&2
-    return 1
+  local shared='/Library/Application Support/obs-studio/plugins/panelive-companion-obs-plugin.plugin'
+  local integration="$package_directory/installer-tools/panelive-companion-integrations.app"
+  # Reject a conflicting user bundle before any shared mutation; no development migration shim.
+  if [[ -e "$installed" || -L "$installed" ]]; then
+    if [[ ! -L "$installed" || "$(/usr/bin/readlink "$installed")" != "$shared" ]]; then
+      printf '%s\n' 'Remove the previous user OBS helper before installing the shared helper.' >&2
+      return 1
+    fi
   fi
-  /bin/mkdir -p -- "$(dirname "$installed")" || return 1
-  replace_plugin_bundle "$source" "$installed" || return 1
+  /usr/bin/codesign --verify --strict "$integration" || return 1
+  "$integration/Contents/MacOS/panelive-companion-integrations" --install || return 1
+  verify_plugin_bundle "$shared" || return 1
+  register_plugin_link "$shared" "$installed" || return 1
   printf '%s\n' 'panelive-companion-obs-plugin installed successfully.'
 }
 
@@ -183,6 +158,10 @@ install_obs_plugin_main() {
         ;;
     esac
   done
+  if [[ "$EUID" -eq 0 ]]; then
+    printf '%s\n' 'Run the installer as your normal user; only the shared OBS update may request elevation.' >&2
+    return 1
+  fi
   package_directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) || return 1
   install_obs_plugin "$package_directory" "$obs_directory" "${HOME:?}/Library/Application Support"
 }

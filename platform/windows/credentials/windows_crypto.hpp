@@ -8,7 +8,6 @@ std::vector<uint8_t> random_bytes(size_t count);
 std::string base64url(std::span<const uint8_t> bytes);
 std::vector<uint8_t> base64url_decode(std::string_view text);
 std::string sha256_hex(std::string_view value);
-std::string hmac_sha256_base64url(std::span<const uint8_t> key, std::string_view value);
 bool constant_time_equal(std::string_view left, std::string_view right);
 std::string uuid_v4();
 

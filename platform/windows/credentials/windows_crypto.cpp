@@ -4,7 +4,6 @@
 #include <bcrypt.h>
 #include <dpapi.h>
 #include <openssl/evp.h>
-#include <openssl/hmac.h>
 
 #include <array>
 #include <limits>
@@ -33,6 +32,8 @@ struct ProtectedBlob
 
 std::vector<uint8_t> random_bytes(size_t count)
 {
+  if (count > (std::numeric_limits<ULONG>::max)())
+    throw std::invalid_argument("Random byte request is too large");
   std::vector<uint8_t> result(count);
   if (BCryptGenRandom(nullptr,
                       result.data(),
@@ -91,7 +92,9 @@ std::string sha256_hex(std::string_view value)
 {
   std::array<unsigned char, 32> digest{};
   unsigned int length = 0;
-  EVP_Digest(value.data(), value.size(), digest.data(), &length, EVP_sha256(), nullptr);
+  if (EVP_Digest(value.data(), value.size(), digest.data(), &length, EVP_sha256(), nullptr) != 1 ||
+      length != digest.size())
+    throw std::runtime_error("Could not hash credential");
   static constexpr char hex[] = "0123456789abcdef";
   std::string result;
   result.reserve(64);
@@ -101,20 +104,6 @@ std::string sha256_hex(std::string_view value)
     result.push_back(hex[byte & 15]);
   }
   return result;
-}
-
-std::string hmac_sha256_base64url(std::span<const uint8_t> key, std::string_view value)
-{
-  std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
-  unsigned int length = 0;
-  HMAC(EVP_sha256(),
-       key.data(),
-       static_cast<int>(key.size()),
-       reinterpret_cast<const unsigned char*>(value.data()),
-       value.size(),
-       digest.data(),
-       &length);
-  return base64url(std::span(digest.data(), length));
 }
 
 bool constant_time_equal(std::string_view left, std::string_view right)

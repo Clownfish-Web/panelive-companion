@@ -4,13 +4,35 @@
 
 #include <array>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 
 namespace studio_remote::macos
 {
+namespace
+{
+std::filesystem::path user_directory(NSSearchPathDirectory directory)
+{
+  @autoreleasepool
+  {
+    NSURL* location = [[NSFileManager defaultManager] URLsForDirectory:directory
+                                                             inDomains:NSUserDomainMask]
+                          .firstObject;
+    if (!location.fileSystemRepresentation)
+      throw std::runtime_error("Could not resolve the current user's installation directory");
+    return location.fileSystemRepresentation;
+  }
+}
+} // namespace
+
+std::filesystem::path companion_installation_directory()
+{
+  return "/Applications/panelive-companion.app";
+}
+
 std::filesystem::path installation_record_file()
 {
-  return "/Library/Preferences/panelive-companion.plist";
+  return user_directory(NSLibraryDirectory) / "Preferences/panelive-companion.plist";
 }
 
 std::filesystem::path installed_obs_directory()

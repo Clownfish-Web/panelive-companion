@@ -1,0 +1,21 @@
+diff --git a/src/civetweb.c b/src/civetweb.c
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -13635,6 +13635,17 @@ mg_websocket_write_exec(struct mg_connection *conn,
+ 		/* if dataLen == 0, the header length (2) is returned */
+ 	}
+ 
++	/* Companion uses server Close for terminal policy/transport failure or
++	 * to answer a peer Close. Wake the native reader even if a revoked peer
++	 * refuses to acknowledge. Do not free the connection here: its worker
++	 * owns callbacks, TLS cleanup and socket destruction. Windows requires
++	 * both directions shut down to wake a pending native receive poll. */
++	if ((conn->connection_type == CONNECTION_TYPE_REQUEST)
++	    && ((opcode & 0xf) == MG_WEBSOCKET_OPCODE_CONNECTION_CLOSE)) {
++		if (shutdown(conn->client.sock, SHUTDOWN_BOTH) != 0) {
++			mg_cry_internal(conn, "%s", "WebSocket shutdown failed");
++		}
++	}
+ 	/* TODO: Remove this unlock as well, when lock is removed. */
+ 	mg_unlock_connection(conn);
+ 

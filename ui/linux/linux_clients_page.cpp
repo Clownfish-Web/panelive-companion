@@ -1,43 +1,28 @@
 #include "linux_management_pages.hpp"
 
+#include "linux_clients_toolbar.hpp"
 #include "linux_pairing_qr.hpp"
 #include "linux_ui_helpers.hpp"
 
 #include <algorithm>
-#include <array>
+#include <memory>
 
 namespace studio_remote::linux
 {
 namespace
 {
-const char* device_icon_name(DeviceType type)
-{
-  switch (type)
-  {
-  case DeviceType::smartphone:
-    return "network-cellular-symbolic";
-  case DeviceType::tablet:
-    return "input-tablet-symbolic";
-  case DeviceType::unknown:
-    return "computer-symbolic";
-  }
-  return "computer-symbolic";
-}
-
-GtkWidget* device_icon(DeviceType type, int pixel_size)
-{
-  auto* icon = gtk_image_new_from_icon_name(device_icon_name(type));
-  gtk_image_set_pixel_size(GTK_IMAGE(icon), pixel_size);
-  return icon;
-}
-
 GtkWidget* client_action_button(GtkWidget* icon,
                                 std::string_view accessible_name,
                                 std::function<void()> action,
-                                bool enabled = true)
+                                bool enabled = true,
+                                std::string_view visible_label = {})
 {
   auto* result = ui::button("", std::move(action), enabled);
-  gtk_button_set_child(GTK_BUTTON(result), icon);
+  auto* content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  ui::append(content, icon);
+  if (!visible_label.empty())
+    ui::append(content, gtk_label_new(std::string(visible_label).c_str()));
+  gtk_button_set_child(GTK_BUTTON(result), content);
   gtk_widget_set_size_request(result, 36, 34);
   const std::string name(accessible_name);
   gtk_widget_set_tooltip_text(result, name.c_str());
@@ -46,245 +31,427 @@ GtkWidget* client_action_button(GtkWidget* icon,
   return result;
 }
 
-GtkWidget* operator_icon(DeviceType type)
+GtkWidget* wrapping_row()
 {
-  auto* result = gtk_overlay_new();
-  gtk_widget_set_size_request(result, 22, 22);
-  gtk_overlay_set_child(GTK_OVERLAY(result), device_icon(type, 17));
-  auto* edit = gtk_image_new_from_icon_name("document-edit-symbolic");
-  gtk_image_set_pixel_size(GTK_IMAGE(edit), 10);
-  gtk_widget_set_halign(edit, GTK_ALIGN_END);
-  gtk_widget_set_valign(edit, GTK_ALIGN_END);
-  gtk_overlay_add_overlay(GTK_OVERLAY(result), edit);
-  return result;
+  auto* row = gtk_flow_box_new();
+  gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(row), GTK_SELECTION_NONE);
+  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(row), 1);
+  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(row), 6);
+  gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(row), 8);
+  gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(row), 8);
+  return row;
 }
 
-GtkWidget* table_label(std::string_view value, int width, bool heading = false)
+void insert(GtkWidget* flow, GtkWidget* child)
 {
-  auto* result = gtk_label_new(std::string(value).c_str());
-  gtk_label_set_xalign(GTK_LABEL(result), 0.0F);
-  gtk_label_set_wrap(GTK_LABEL(result), TRUE);
-  gtk_widget_set_size_request(result, width, -1);
-  if (heading)
-    gtk_widget_add_css_class(result, "dim-label");
-  return result;
+  gtk_flow_box_insert(GTK_FLOW_BOX(flow), child, -1);
+}
+
+GtkWidget* connection_status(const ManagementClientRow& client)
+{
+  auto* label = gtk_label_new(client.connected ? "● Online" : "○ Offline");
+  gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
+  gtk_widget_add_css_class(label, "dispatch-connection");
+  gtk_widget_add_css_class(label, client.connected ? "online" : "offline");
+  return label;
+}
+
+void detail_fact(GtkWidget* grid, int row, std::string_view title, GtkWidget* value)
+{
+  auto* label = ui::description(title);
+  gtk_widget_add_css_class(label, "dispatch-fact");
+  gtk_widget_add_css_class(value, "dispatch-fact");
+  gtk_grid_attach(GTK_GRID(grid), label, 0, row, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), value, 1, row, 1, 1);
+}
+
+GtkWidget* role_action(LinuxPageContext context, const ManagementClientRow& client)
+{
+  return client_action_button(
+      ui::dispatch_icon("clients", 15),
+      client.can_set_viewer ? "Demote to viewer" : "Promote to operator",
+      [context, id = client.id, demote = client.can_set_viewer]
+      {
+        if (demote)
+          context.controller.set_viewer(id);
+        else
+          context.controller.set_operator(id);
+        context.redraw();
+      },
+      client.can_set_operator || client.can_set_viewer,
+      client.can_set_viewer ? "Set viewer" : "Set operator");
+}
+
+GtkWidget* forget_action(LinuxPageContext context, const ManagementClientRow& client)
+{
+  return client_action_button(
+      ui::dispatch_icon("forget", 15),
+      "Forget client",
+      [context, client]
+      {
+        ui::confirm(context.window,
+                    "Forget paired client",
+                    "Forget '" + client.name +
+                        "'? Its pairing credential will be deleted and the device will disconnect "
+                        "immediately.",
+                    [context, id = client.id]
+                    {
+                      context.controller.forget_client(id);
+                      context.redraw();
+                    });
+      },
+      true,
+      "Forget");
+}
+
+GtkWidget* prompting_action(LinuxPageContext context, const ManagementClientRow& client)
+{
+  const bool attached = client.attached_script_count.value_or(0) > 0;
+  auto* image = gtk_overlay_new();
+  gtk_overlay_set_child(GTK_OVERLAY(image), ui::dispatch_icon("teleprompter", 15));
+  if (attached)
+  {
+    auto* dot = gtk_label_new("●");
+    gtk_widget_set_halign(dot, GTK_ALIGN_END);
+    gtk_widget_set_valign(dot, GTK_ALIGN_END);
+    gtk_overlay_add_overlay(GTK_OVERLAY(image), dot);
+    gtk_widget_add_css_class(image, "attached-script-icon");
+  }
+  const auto detail = client.attached_script_count
+                          ? std::to_string(*client.attached_script_count) + " attached scripts"
+                          : "attachments unavailable";
+  return ui::named(client_action_button(
+                       image,
+                       "Teleprompter - " + detail,
+                       [context, id = client.id, name = client.name]
+                       {
+                         context.controller.teleprompter().open(id, name);
+                         context.redraw();
+                       },
+                       true,
+                       "Teleprompter"),
+                   "client-teleprompter");
+}
+
+GtkWidget* inspector(LinuxPageContext context, const ManagementClientRow& client)
+{
+  auto* body = gtk_box_new(GTK_ORIENTATION_VERTICAL, 16);
+  gtk_widget_set_name(body, "clients-inspector");
+  gtk_widget_add_css_class(body, "dispatch-inspector");
+  gtk_widget_set_valign(body, GTK_ALIGN_START);
+  auto* overline = ui::description("SELECTED CLIENT / " + client.id.substr(0, 8));
+  gtk_widget_set_tooltip_text(overline, client.id.c_str());
+  gtk_label_set_max_width_chars(GTK_LABEL(overline), 28);
+  gtk_widget_add_css_class(overline, "dispatch-overline");
+  ui::append(body, overline);
+  auto* name = ui::section_title(client.name);
+  gtk_label_set_max_width_chars(GTK_LABEL(name), 20);
+  ui::append(body, name);
+  auto* backend = ui::description(client.backend + " · " + client.role);
+  gtk_label_set_max_width_chars(GTK_LABEL(backend), 28);
+  ui::append(body, backend);
+  auto* facts = gtk_grid_new();
+  gtk_grid_set_column_spacing(GTK_GRID(facts), 20);
+  gtk_grid_set_row_spacing(GTK_GRID(facts), 12);
+  gtk_widget_set_margin_top(facts, 6);
+  gtk_widget_set_margin_bottom(facts, 6);
+  detail_fact(facts, 0, "Connection", connection_status(client));
+  detail_fact(facts, 1, "Last seen", ui::description(client.last_seen));
+  detail_fact(facts,
+              2,
+              "Attached scripts",
+              ui::description(client.attached_script_count
+                                  ? std::to_string(*client.attached_script_count)
+                                  : "Unavailable"));
+  ui::append(body, facts);
+  auto* actions = wrapping_row();
+  if (gtk_widget_get_width(GTK_WIDGET(context.window)) > 1100)
+    gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(actions), 1);
+  auto* identify = client_action_button(
+      ui::dispatch_icon("identify", 15),
+      "Identify client",
+      [context, id = client.id]
+      {
+        context.controller.identify_client(id);
+        context.redraw();
+      },
+      client.connected && !context.controller.state().identification,
+      "Identify");
+  insert(actions, ui::named(identify, "client-identify"));
+  insert(actions, ui::named(role_action(context, client), "client-role"));
+  insert(actions, prompting_action(context, client));
+  insert(actions, ui::named(forget_action(context, client), "client-forget"));
+  ui::append(body, actions);
+  return body;
+}
+
+GtkWidget* client_record(LinuxPageContext context,
+                         const ManagementClientRow& client,
+                         std::size_t index,
+                         bool selected)
+{
+  auto* button = ui::button("",
+                            [context, id = client.id]
+                            {
+                              if (context.select_client)
+                                context.select_client(id);
+                            });
+  gtk_widget_add_css_class(button, "dispatch-client");
+  gtk_widget_set_name(button, ("client-row-" + client.id).c_str());
+  if (selected)
+    gtk_widget_add_css_class(button, "selected");
+  gtk_widget_set_hexpand(button, TRUE);
+  gtk_accessible_update_property(
+      GTK_ACCESSIBLE(button), GTK_ACCESSIBLE_PROPERTY_LABEL, client.name.c_str(), -1);
+  gtk_accessible_update_state(GTK_ACCESSIBLE(button),
+                              GTK_ACCESSIBLE_STATE_PRESSED,
+                              selected ? GTK_ACCESSIBLE_TRISTATE_TRUE
+                                       : GTK_ACCESSIBLE_TRISTATE_FALSE,
+                              -1);
+  auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  const auto ordinal = (index < 9 ? "0" : "") + std::to_string(index + 1);
+  auto* number = gtk_label_new(ordinal.c_str());
+  gtk_widget_add_css_class(number, "dispatch-number");
+  gtk_widget_set_valign(number, GTK_ALIGN_START);
+  ui::append(row, number);
+  auto* identity = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+  gtk_widget_set_hexpand(identity, TRUE);
+  auto* name = ui::section_title(client.name);
+  gtk_label_set_wrap(GTK_LABEL(name), TRUE);
+  gtk_label_set_wrap_mode(GTK_LABEL(name), PANGO_WRAP_WORD_CHAR);
+  ui::append(identity, name);
+  const auto scripts = client.attached_script_count
+                           ? std::to_string(*client.attached_script_count) + " scripts"
+                           : "attachments unavailable";
+  auto* code = ui::description(client.id.substr(0, 8) + " · " + scripts);
+  gtk_widget_add_css_class(code, "dispatch-client-code");
+  gtk_widget_set_tooltip_text(code, client.id.c_str());
+  ui::append(identity, code);
+  auto* facts = ui::description(client.backend + " · " + client.role + " · " + client.last_seen);
+  gtk_widget_add_css_class(facts, "dispatch-client-facts");
+  ui::append(identity, facts);
+  auto* status = connection_status(client);
+  gtk_widget_set_halign(status, GTK_ALIGN_START);
+  if (!client.identification_code.empty())
+    ui::append(
+        identity,
+        ui::named(ui::description(client.identification_code), "client-identification-code"));
+  ui::append(row, identity);
+  gtk_widget_set_hexpand(row, TRUE);
+  auto* columns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  ui::append(columns, row);
+  gtk_widget_set_size_request(status, 72, -1);
+  ui::append(columns, status);
+  if (gtk_widget_get_width(GTK_WIDGET(context.window)) > 750)
+  {
+    auto* role = ui::description(client.role);
+    gtk_widget_set_size_request(role, 76, -1);
+    gtk_widget_add_css_class(role, "dispatch-fact");
+    ui::append(columns, role);
+  }
+  gtk_button_set_child(GTK_BUTTON(button), columns);
+  set_linux_client_filter_data(button, client);
+  return button;
+}
+
+GtkWidget* roster_heading(LinuxPageContext context)
+{
+  auto* row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_add_css_class(row, "dispatch-table-heading");
+  auto* client = ui::description("Client");
+  gtk_widget_set_hexpand(client, TRUE);
+  ui::append(row, client);
+  auto* status = ui::description("Status");
+  gtk_widget_set_size_request(status, 72, -1);
+  ui::append(row, status);
+  if (gtk_widget_get_width(GTK_WIDGET(context.window)) > 750)
+  {
+    auto* role = ui::description("Role");
+    gtk_widget_set_size_request(role, 76, -1);
+    ui::append(row, role);
+  }
+  return row;
+}
+
+GtkWidget* page_commands(LinuxPageContext context)
+{
+  auto* commands = wrapping_row();
+  const auto& state = context.controller.state();
+  insert(commands,
+         ui::named(client_action_button(
+                       ui::dispatch_icon("identify", 15),
+                       "Identify all",
+                       [context]
+                       {
+                         context.controller.identify_all_clients();
+                         context.redraw();
+                       },
+                       !state.identification &&
+                           std::ranges::any_of(state.clients, &ManagementClientRow::connected),
+                       "Identify all"),
+                   "clients-identify-all"));
+  insert(commands,
+         ui::named(client_action_button(
+                       ui::dispatch_icon("refresh", 15),
+                       "Refresh",
+                       [context]
+                       {
+                         context.controller.refresh_clients();
+                         context.redraw();
+                       },
+                       true,
+                       "Refresh"),
+                   "clients-refresh"));
+  auto* pair = client_action_button(
+      ui::dispatch_icon("plus", 15),
+      "Pair new client",
+      [context]
+      {
+        context.controller.pair_client();
+        context.redraw();
+      },
+      true,
+      "Pair new client");
+  gtk_widget_add_css_class(pair, "suggested-action");
+  if (gtk_widget_get_width(GTK_WIDGET(context.window)) < 700)
+  {
+    auto* stacked = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    ui::append(stacked, ui::named(pair, "clients-pair"));
+    ui::append(stacked, commands);
+    return stacked;
+  }
+  insert(commands, ui::named(pair, "clients-pair"));
+  return commands;
+}
+
+GtkWidget* pairing_panel(LinuxPageContext context, const ManagementPairing& pairing)
+{
+  auto* panel = wrapping_row();
+  gtk_widget_set_name(panel, "pairing-card");
+  auto* qr = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  ui::append(qr, make_linux_pairing_qr(pairing.payload));
+  ui::append(qr,
+             ui::named(client_action_button(gtk_image_new_from_icon_name("zoom-in-symbolic"),
+                                            "Enlarge pairing QR for 30 seconds",
+                                            [context]
+                                            {
+                                              if (context.enlarge_pairing)
+                                                context.enlarge_pairing();
+                                            }),
+                       "pairing-enlarge"));
+  insert(panel, qr);
+  auto* detail = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+  ui::append(detail, ui::section_title("Pair a new client"));
+  ui::append(
+      detail,
+      ui::description("Scan this single-use code with the PaneLive mobile app. It is cleared "
+                      "automatically when used or expired."));
+  ui::append(detail,
+             ui::description("This pairing code expires automatically and can be used only once."));
+  insert(panel, detail);
+  return panel;
 }
 } // namespace
 
 GtkWidget* make_linux_clients_page(LinuxPageContext context)
 {
-  using namespace ui;
   if (!context.controller.teleprompter().state().device_id.empty())
     return make_linux_teleprompter_page(context);
-  auto* result = page("Clients", "Pair devices and manage access to production backends.");
-  auto* commands = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-  gtk_widget_set_halign(commands, GTK_ALIGN_END);
-  auto* identify_all = button(
-      "Identify all",
-      [context]
-      {
-        context.controller.identify_all_clients();
-        context.redraw();
-      },
-      !context.controller.state().identification &&
-          std::ranges::any_of(context.controller.state().clients, &ManagementClientRow::connected));
-  gtk_widget_set_name(identify_all, "clients-identify-all");
-  append(commands, identify_all);
-  auto* refresh = button("Refresh",
-                         [context]
-                         {
-                           context.controller.refresh_clients();
-                           context.redraw();
-                         });
-  gtk_widget_set_name(refresh, "clients-refresh");
-  append(commands, refresh);
-  auto* pair = button("Pair new client",
-                      [context]
-                      {
-                        context.controller.pair_client();
-                        context.redraw();
-                      });
-  gtk_widget_set_name(pair, "clients-pair");
-  gtk_widget_add_css_class(pair, "suggested-action");
-  append(commands, pair);
-  append(result, commands);
-
+  auto* result = ui::page("Clients", "Pair devices and manage access to production backends.");
+  gtk_widget_set_name(result, "clients-page");
+  gtk_widget_add_css_class(result, "dispatch-clients");
+  auto* commands = page_commands(context);
+  gtk_widget_set_valign(commands, GTK_ALIGN_CENTER);
+  gtk_widget_add_css_class(commands, "dispatch-page-actions");
+  ui::flow_append(gtk_widget_get_first_child(result), commands);
   const auto& state = context.controller.state();
   if (state.pairing)
+    ui::append(result, pairing_panel(context, *state.pairing));
+  if (state.clients.empty())
   {
-    auto* pairing = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 20);
-    gtk_widget_set_name(pairing, "pairing-card");
-    append(pairing, make_linux_pairing_qr(state.pairing->payload));
-    auto* enlarge = client_action_button(gtk_image_new_from_icon_name("zoom-in-symbolic"),
-                                         "Enlarge pairing QR for 30 seconds",
-                                         [context]
-                                         {
-                                           if (context.enlarge_pairing)
-                                             context.enlarge_pairing();
-                                         });
-    gtk_widget_set_name(enlarge, "pairing-enlarge");
-    gtk_widget_set_valign(enlarge, GTK_ALIGN_CENTER);
-    append(pairing, enlarge);
-    auto* explanation = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_widget_set_valign(explanation, GTK_ALIGN_CENTER);
-    append(explanation, section_title("Pair a new client"));
-    append(explanation,
-           description("Scan this single-use code with the PaneLive mobile app. It is cleared "
-                       "automatically when used or expired."));
-    append(explanation,
-           badge("This pairing code expires automatically and can be used only once.", "warning"));
-    append(pairing, explanation);
-    append(result, card(pairing));
+    auto* roster = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(roster, "clients-roster");
+    ui::append(roster, ui::description("No paired clients yet. Pair a device to begin."));
+    ui::append(result, make_linux_clients_toolbar(context, roster));
+    ui::append(result, roster);
+    return result;
   }
-
-  auto* clients = gtk_box_new(GTK_ORIENTATION_VERTICAL, 1);
-  auto* headings = gtk_grid_new();
-  gtk_grid_set_column_spacing(GTK_GRID(headings), 12);
-  gtk_widget_set_margin_top(headings, 8);
-  gtk_widget_set_margin_bottom(headings, 8);
-  gtk_widget_set_margin_start(headings, 14);
-  gtk_widget_set_margin_end(headings, 14);
-  const std::array heading_values{std::pair{"Status", 80},
-                                  std::pair{"Client", 210},
-                                  std::pair{"Backend", 100},
-                                  std::pair{"Role", 80},
-                                  std::pair{"Last seen", 130},
-                                  std::pair{"Actions", 210}};
-  for (std::size_t column = 0; column < heading_values.size(); ++column)
+  auto selected =
+      std::ranges::find(state.clients, context.selected_client_id, &ManagementClientRow::id);
+  if (selected == state.clients.end())
+    selected = state.clients.begin();
+  const bool wide = gtk_widget_get_width(GTK_WIDGET(context.window)) > 1100;
+  auto* columns = wide ? gtk_grid_new() : gtk_box_new(GTK_ORIENTATION_VERTICAL, 30);
+  gtk_widget_set_name(columns, "clients-columns");
+  gtk_widget_add_css_class(columns, "dispatch-columns");
+  auto* roster = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_name(roster, "clients-roster");
+  gtk_widget_set_hexpand(roster, TRUE);
+  gtk_widget_set_valign(roster, GTK_ALIGN_START);
+  ui::append(roster, roster_heading(context));
+  for (std::size_t index = 0; index < state.clients.size(); ++index)
+    ui::append(roster,
+               client_record(
+                   context, state.clients[index], index, state.clients[index].id == selected->id));
+  auto* details = inspector(context, *selected);
+  gtk_widget_set_hexpand(details, TRUE);
+  if (wide)
   {
-    GtkWidget* heading = nullptr;
-    if (column < 5)
+    gtk_widget_add_css_class(details, "side-inspector");
+    const auto available = std::max(0, context.content_width - 110);
+    // The outer scroller does not propagate this width to the window, so resizing can
+    // still cross the stacking breakpoint. The grid measures both columns at their widths.
+    gtk_widget_set_hexpand(roster, FALSE);
+    gtk_widget_set_size_request(roster, available * 165 / 265, -1);
+    gtk_grid_set_column_spacing(GTK_GRID(columns), 30);
+    gtk_grid_attach(GTK_GRID(columns), roster, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(columns), details, 1, 0, 1, 1);
+  }
+  else
+  {
+    ui::append(columns, roster);
+    ui::append(columns, details);
+  }
+  ui::append(result, make_linux_clients_toolbar(context, roster));
+  ui::append(result, columns);
+  return result;
+}
+
+void refresh_linux_clients_page(GtkWidget* page, LinuxPageContext context)
+{
+  // Only the editable toolbar is retained. All action gating, pairing expiry and client rows
+  // still come from the current controller snapshot, just as in the Windows page builder.
+  const std::unique_ptr<GtkWidget, decltype(&g_object_unref)> replacement(
+      GTK_WIDGET(g_object_ref_sink(make_linux_clients_page(context))), g_object_unref);
+  auto* toolbar = ui::find_widget(page, "clients-toolbar");
+  auto* replacement_toolbar = ui::find_widget(replacement.get(), "clients-toolbar");
+  auto* roster = ui::find_widget(replacement.get(), "clients-roster");
+  refresh_linux_clients_toolbar(toolbar, context, roster);
+  for (auto* child = gtk_widget_get_first_child(page); child;)
+  {
+    auto* next = gtk_widget_get_next_sibling(child);
+    if (child != toolbar)
+      gtk_box_remove(GTK_BOX(page), child);
+    child = next;
+  }
+  GtkWidget* previous = nullptr;
+  for (auto* child = gtk_widget_get_first_child(replacement.get()); child;)
+  {
+    auto* next = gtk_widget_get_next_sibling(child);
+    if (child == replacement_toolbar)
     {
-      const auto sort_column = static_cast<ManagementClientColumn>(column);
-      const auto sort = state.client_sort;
-      const auto indicator =
-          sort.column == sort_column
-              ? (sort.direction == ManagementSortDirection::ascending ? " ↑" : " ↓")
-              : " ↕";
-      heading = button(std::string(heading_values[column].first) + indicator,
-                       [context, sort_column]
-                       {
-                         context.controller.sort_clients(sort_column);
-                         context.redraw();
-                       });
-      gtk_widget_add_css_class(heading, "flat");
-      gtk_widget_set_size_request(heading, heading_values[column].second, -1);
-      gtk_widget_set_tooltip_text(heading, "Sort column; click again to reverse");
+      gtk_box_reorder_child_after(GTK_BOX(page), toolbar, previous);
+      previous = toolbar;
     }
     else
-      heading = table_label(heading_values[column].first, heading_values[column].second, true);
-    gtk_grid_attach(GTK_GRID(headings), heading, static_cast<int>(column), 0, 1, 1);
-  }
-  gtk_widget_set_hexpand(gtk_grid_get_child_at(GTK_GRID(headings), 1, 0), TRUE);
-  append(clients, headings);
-  append(clients, gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-  for (const auto& client : state.clients)
-  {
-    auto* client_row = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(client_row), 12);
-    gtk_widget_set_margin_top(client_row, 8);
-    gtk_widget_set_margin_bottom(client_row, 8);
-    gtk_widget_set_margin_start(client_row, 14);
-    gtk_widget_set_margin_end(client_row, 14);
-    auto* identity = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-    gtk_widget_set_hexpand(identity, TRUE);
-    gtk_widget_set_size_request(identity, 210, -1);
-    append(identity, device_icon(client.device_type, 18));
-    auto* name = gtk_label_new(client.name.c_str());
-    gtk_label_set_xalign(GTK_LABEL(name), 0.0F);
-    gtk_label_set_wrap(GTK_LABEL(name), TRUE);
-    gtk_widget_add_css_class(name, "heading");
-    append(identity, name);
-    if (!client.identification_code.empty())
     {
-      auto* code = gtk_label_new(client.identification_code.c_str());
-      gtk_widget_set_name(code, "client-identification-code");
-      gtk_widget_set_tooltip_text(code, "Identification code");
-      append(identity, code);
+      const std::unique_ptr<GtkWidget, decltype(&g_object_unref)> retained(
+          GTK_WIDGET(g_object_ref(child)), g_object_unref);
+      gtk_box_remove(GTK_BOX(replacement.get()), child);
+      gtk_box_append(GTK_BOX(page), child);
+      previous = child;
     }
-    auto* status =
-        badge(client.connected ? "Online" : "Offline", client.connected ? "healthy" : "neutral");
-    gtk_widget_set_size_request(status, 80, -1);
-    gtk_widget_set_halign(status, GTK_ALIGN_START);
-    gtk_grid_attach(GTK_GRID(client_row), status, 0, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(client_row), identity, 1, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(client_row), table_label(client.backend, 100), 2, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(client_row), table_label(client.role, 80), 3, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(client_row), table_label(client.last_seen, 130), 4, 0, 1, 1);
-    auto* change_role = client_action_button(
-        client.can_set_viewer ? device_icon(client.device_type, 17)
-                              : operator_icon(client.device_type),
-        client.can_set_viewer ? "Demote to viewer" : "Promote to operator",
-        [context, id = client.id, demote = client.can_set_viewer]
-        {
-          if (demote)
-            context.controller.set_viewer(id);
-          else
-            context.controller.set_operator(id);
-          context.redraw();
-        },
-        client.can_set_operator || client.can_set_viewer);
-    auto* forget = client_action_button(
-        gtk_image_new_from_icon_name("edit-delete-symbolic"),
-        "Forget client",
-        [context, client]
-        {
-          confirm(context.window,
-                  "Forget paired client",
-                  "Forget '" + client.name +
-                      "'? Its pairing credential will be deleted and the device will disconnect "
-                      "immediately.",
-                  [context, id = client.id]
-                  {
-                    context.controller.forget_client(id);
-                    context.redraw();
-                  });
-        });
-    auto* actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    gtk_widget_set_size_request(actions, 210, -1);
-    auto* identify = client_action_button(
-        gtk_image_new_from_icon_name("find-location-symbolic"),
-        "Identify client",
-        [context, id = client.id]
-        {
-          context.controller.identify_client(id);
-          context.redraw();
-        },
-        client.connected && !state.identification);
-    gtk_widget_set_name(identify, "client-identify");
-    append(actions, identify);
-    append(actions, change_role);
-    const bool attached = client.attached_script_count.value_or(0) > 0;
-    auto* prompting_icon = gtk_overlay_new();
-    gtk_overlay_set_child(GTK_OVERLAY(prompting_icon),
-                          gtk_image_new_from_icon_name("text-x-generic-symbolic"));
-    if (attached)
-    {
-      auto* dot = gtk_label_new("●");
-      gtk_widget_set_halign(dot, GTK_ALIGN_END);
-      gtk_widget_set_valign(dot, GTK_ALIGN_END);
-      gtk_overlay_add_overlay(GTK_OVERLAY(prompting_icon), dot);
-      gtk_widget_add_css_class(prompting_icon, "attached-script-icon");
-    }
-    const auto detail = client.attached_script_count
-                            ? std::to_string(*client.attached_script_count) + " attached scripts"
-                            : "attachments unavailable";
-    auto* prompting = client_action_button(prompting_icon,
-                                           "Teleprompter - " + detail,
-                                           [context, id = client.id, name = client.name]
-                                           {
-                                             context.controller.teleprompter().open(id, name);
-                                             context.redraw();
-                                           });
-    gtk_widget_set_name(prompting, "client-teleprompter");
-    append(actions, prompting);
-    append(actions, forget);
-    gtk_grid_attach(GTK_GRID(client_row), actions, 5, 0, 1, 1);
-    append(clients, client_row);
+    child = next;
   }
-  if (state.clients.empty())
-    append(clients, description("No paired clients yet. Pair a device to begin."));
-  append(result, card(clients));
-  return result;
 }
 } // namespace studio_remote::linux

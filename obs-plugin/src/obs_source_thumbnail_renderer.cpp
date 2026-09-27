@@ -363,7 +363,7 @@ ObsSourceThumbnailRenderer::CaptureAttempt ObsSourceThumbnailRenderer::capture_s
       if (thumbnail_pixels_ready(source_kind_, stats))
         mailbox_.publish(request_->sequence,
                          ipc::ThumbnailStatus::success,
-                         packed.data(),
+                         packed,
                          width,
                          height,
                          target_stride,

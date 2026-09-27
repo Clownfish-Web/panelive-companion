@@ -52,6 +52,15 @@ void CaptureLifecycle::reconcile(bool demanded, std::uint64_t demand_generation)
   set_state(CompanionCaptureState::faulted);
 }
 
+void CaptureLifecycle::reconfigure_tracks()
+{
+  if (reload_in_progress_ || state_ != CompanionCaptureState::active)
+    return;
+  set_state(CompanionCaptureState::stopping);
+  stop_action_();
+  set_state(CompanionCaptureState::idle);
+}
+
 void CaptureLifecycle::begin_capture_reload()
 {
   capture_generation_reset_pending_ = true;

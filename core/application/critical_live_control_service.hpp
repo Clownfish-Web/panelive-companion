@@ -78,6 +78,15 @@ private:
     std::uint64_t expected_sequence;
   };
 
+  struct ClientSequence
+  {
+    std::uint64_t pairing_generation;
+    std::string production_provider;
+    std::uint64_t next;
+  };
+
+  bool prepare_sequence_locked(const Device& device, std::uint64_t initial_sequence);
+
   std::string payload_signature(const Device& device,
                                 std::uint64_t client_sequence,
                                 CriticalActionType type,
@@ -96,6 +105,8 @@ private:
   void complete(CriticalAction action, std::string outcome, json evidence);
   void fault(CriticalAction action, std::string reason, std::string message);
   void cancel_queued_locked(std::string reason, std::string message);
+  // Called once per admitted action, under mutex_, when it becomes terminal.
+  void remember_terminal_locked(const CriticalAction& action);
   bool can_unblock_locked() const;
   void
   emit_action(std::string_view type, const CriticalAction& action, json extra = json::object());
@@ -126,9 +137,10 @@ private:
   mutable std::mutex mutex_;
   std::condition_variable changed_;
   std::deque<CriticalAction> queue_;
-  std::deque<KnownAction> history_;
+  // Only terminal IDs participate in eviction; queued/executing entries remain owned separately.
+  std::deque<std::string> history_;
   std::unordered_map<std::string, KnownAction> known_by_action_id_;
-  std::unordered_map<std::string, std::uint64_t> next_client_sequence_;
+  std::unordered_map<std::string, ClientSequence> next_client_sequence_;
   // Guarded by mutex_; retained across later faults until successful global recovery.
   std::optional<SequenceRecovery> sequence_recovery_;
   std::uint64_t next_fifo_sequence_ = 1;

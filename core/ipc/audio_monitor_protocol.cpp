@@ -1,6 +1,7 @@
 #include <studio_remote/ipc/audio_monitor_protocol.hpp>
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 
@@ -81,15 +82,16 @@ std::optional<AudioMonitorFrame> copy_audio_monitor_frame(const AudioMonitorMapp
     return std::nullopt;
 
   AudioMonitorFrame frame;
-  frame.sample_rate = mapping.sample_rate;
-  frame.channels = slot.channels;
+  frame.sample_rate = audio_monitor_sample_rate;
+  frame.channels = audio_monitor_maximum_channels;
   frame.sequence = sequence;
   frame.first_sample_index = slot.first_sample_index;
   frame.captured_ns = slot.captured_ns;
   frame.topology_generation = slot.topology_generation;
   frame.flags = static_cast<std::uint16_t>(slot.flags);
-  const auto value_count = static_cast<std::size_t>(slot.frame_count) * slot.channels;
-  frame.samples.assign(slot.samples, slot.samples + value_count);
+  // Shared metadata can change before the final sequence check. Copy only the fixed protocol
+  // extent; rereading frame_count/channels here could invalidate the earlier bounds check.
+  frame.samples.assign(std::begin(slot.samples), std::end(slot.samples));
   if (slot.sequence.load(std::memory_order_acquire) != before)
     return std::nullopt;
   return frame;

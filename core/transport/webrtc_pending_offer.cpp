@@ -13,13 +13,26 @@ WebRtcHub::PendingOffer::PendingOffer(WebRtcHub& hub, std::shared_ptr<Peer> peer
   std::lock_guard lock(hub_.mutex_);
   if (hub_.stopping_)
     peer_->cancel_offer(MediaOfferFailure::hub_stopped);
-  else if (hub_.pending_offers_.size() >= 64)
+  else if (hub_.pending_offers_.size() >= 64 || !has_device_capacity_locked())
     peer_->cancel_offer(MediaOfferFailure::capacity_exceeded);
   else
   {
     hub_.pending_offers_.insert(peer_);
     registered_ = true;
   }
+}
+
+bool WebRtcHub::PendingOffer::has_device_capacity_locked() const
+{
+  // Count the union: every pending owner reserves its future active slot. A replacement keeps
+  // that slot, while the independent 64-offer bound still limits overlapping native resources.
+  constexpr std::size_t maximum_devices = 32;
+  std::unordered_set<std::string_view> devices;
+  for (const auto& [id, peer] : hub_.peers_)
+    devices.insert(id);
+  for (const auto& peer : hub_.pending_offers_)
+    devices.insert(peer->device_id);
+  return devices.contains(peer_->device_id) || devices.size() < maximum_devices;
 }
 
 WebRtcHub::PendingOffer::~PendingOffer()

@@ -2,7 +2,7 @@
 
 #include <studio_remote/ipc/audio_mixer_roster_mapping.hpp>
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -19,16 +19,15 @@ std::string bounded_string(const char* value, std::size_t capacity)
 
 AudioMixerRosterObservation WindowsAudioMixerRoster::read()
 {
-  HANDLE handle = OpenFileMappingW(FILE_MAP_READ, FALSE, ipc::audio_mixer_roster_mapping_name);
+  const auto handle =
+      open_owner_restricted_mapping(FILE_MAP_READ, ipc::audio_mixer_roster_mapping_name);
   if (!handle)
     return {};
-  auto* mapping = static_cast<ipc::AudioMixerRosterMapping*>(
-      MapViewOfFile(handle, FILE_MAP_READ, 0, 0, sizeof(ipc::AudioMixerRosterMapping)));
-  if (!mapping)
-  {
-    CloseHandle(handle);
+  const IpcMappingView view(
+      MapViewOfFile(handle.get(), FILE_MAP_READ, 0, 0, sizeof(ipc::AudioMixerRosterMapping)));
+  if (!view)
     return {};
-  }
+  const auto* mapping = static_cast<const ipc::AudioMixerRosterMapping*>(view.get());
 
   AudioMixerRosterObservation observation;
   if (mapping->magic == ipc::audio_mixer_roster_magic &&
@@ -59,8 +58,6 @@ AudioMixerRosterObservation WindowsAudioMixerRoster::read()
       }
     }
   }
-  UnmapViewOfFile(mapping);
-  CloseHandle(handle);
   return observation;
 }
 

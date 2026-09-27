@@ -84,20 +84,73 @@ void append(GtkWidget* box, GtkWidget* child)
   gtk_box_append(GTK_BOX(box), child);
 }
 
+GtkWidget* dispatch_icon(std::string_view name, int size)
+{
+  const auto icon_name = "dispatch-" + std::string(name) + "-symbolic";
+  auto* image = gtk_image_new_from_icon_name(icon_name.c_str());
+  gtk_image_set_pixel_size(GTK_IMAGE(image), size);
+  return image;
+}
+
+FocusSnapshot capture_focus(GtkWindow* window, GtkWidget* content)
+{
+  auto* focused = gtk_window_get_focus(window);
+  if (!focused || !gtk_widget_is_ancestor(focused, content))
+    return {};
+  // Editable controls often focus an internal GtkText child, not the named public widget.
+  while (focused != content &&
+         std::string_view(gtk_widget_get_name(focused)) == G_OBJECT_TYPE_NAME(focused))
+    focused = gtk_widget_get_parent(focused);
+  if (focused == content)
+    return {};
+  FocusSnapshot snapshot{gtk_widget_get_name(focused), {}};
+  if (GTK_IS_EDITABLE(focused))
+  {
+    int begin = 0;
+    int end = 0;
+    if (!gtk_editable_get_selection_bounds(GTK_EDITABLE(focused), &begin, &end))
+      begin = end = gtk_editable_get_position(GTK_EDITABLE(focused));
+    snapshot.selection = std::pair{begin, end};
+  }
+  return snapshot;
+}
+
+void restore_focus(GtkWindow* window, GtkWidget* content, const FocusSnapshot& snapshot)
+{
+  if (snapshot.widget_name.empty())
+    return;
+  auto* target = find_widget(content, snapshot.widget_name);
+  if (!target || !gtk_widget_is_sensitive(target) || !gtk_widget_is_visible(target))
+    return;
+  auto* current = gtk_window_get_focus(window);
+  // Retained form controls must keep their selection and active input-method composition.
+  if (current && (current == target || gtk_widget_is_ancestor(current, target)))
+    return;
+  gtk_widget_grab_focus(target);
+  if (snapshot.selection && GTK_IS_EDITABLE(target))
+    gtk_editable_select_region(
+        GTK_EDITABLE(target), snapshot.selection->first, snapshot.selection->second);
+}
+
 GtkWidget* page(std::string_view title, std::string_view detail)
 {
   auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 18);
-  gtk_widget_set_margin_top(box, 24);
-  gtk_widget_set_margin_bottom(box, 24);
-  gtk_widget_set_margin_start(box, 24);
-  gtk_widget_set_margin_end(box, 24);
   auto* header = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+  auto* header_layout = flow_row(2);
+  gtk_widget_add_css_class(box, "dispatch-page");
+  gtk_widget_add_css_class(header_layout, "dispatch-page-heading");
+  auto* overline = description("YOUR PRODUCTION, CONNECTED");
+  gtk_widget_add_css_class(overline, "dispatch-overline");
+  append(header, overline);
   auto* heading = gtk_label_new(std::string(title).c_str());
   gtk_widget_add_css_class(heading, "title-1");
   gtk_label_set_xalign(GTK_LABEL(heading), 0.0F);
+  gtk_label_set_wrap(GTK_LABEL(heading), TRUE);
+  gtk_label_set_wrap_mode(GTK_LABEL(heading), PANGO_WRAP_WORD_CHAR);
   append(header, heading);
   append(header, description(detail));
-  append(box, header);
+  flow_append(header_layout, header);
+  append(box, header_layout);
   return box;
 }
 
@@ -118,6 +171,8 @@ GtkWidget* section_title(std::string_view value)
   auto* label = gtk_label_new(std::string(value).c_str());
   gtk_widget_add_css_class(label, "title-3");
   gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
+  gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+  gtk_label_set_wrap_mode(GTK_LABEL(label), PANGO_WRAP_WORD_CHAR);
   return label;
 }
 
@@ -126,24 +181,56 @@ GtkWidget* description(std::string_view value)
   auto* label = gtk_label_new(std::string(value).c_str());
   gtk_widget_add_css_class(label, "dim-label");
   gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+  gtk_label_set_wrap_mode(GTK_LABEL(label), PANGO_WRAP_WORD_CHAR);
   gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
   return label;
 }
 
 GtkWidget* form_row(std::string_view title, GtkWidget* control, std::string_view detail)
 {
-  auto* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 16);
+  auto* box = flow_row(2);
   auto* labels = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3);
   gtk_widget_set_hexpand(labels, TRUE);
   auto* heading = gtk_label_new(std::string(title).c_str());
   gtk_label_set_xalign(GTK_LABEL(heading), 0.0F);
+  gtk_label_set_wrap(GTK_LABEL(heading), TRUE);
+  gtk_label_set_wrap_mode(GTK_LABEL(heading), PANGO_WRAP_WORD_CHAR);
   append(labels, heading);
+  gtk_accessible_update_relation(GTK_ACCESSIBLE(control),
+                                 GTK_ACCESSIBLE_RELATION_LABELLED_BY,
+                                 heading,
+                                 nullptr,
+                                 -1);
   if (!detail.empty())
-    append(labels, description(detail));
-  append(box, labels);
+  {
+    auto* help = description(detail);
+    append(labels, help);
+    gtk_accessible_update_relation(GTK_ACCESSIBLE(control),
+                                   GTK_ACCESSIBLE_RELATION_DESCRIBED_BY,
+                                   help,
+                                   nullptr,
+                                   -1);
+  }
+  flow_append(box, labels);
   gtk_widget_set_valign(control, GTK_ALIGN_CENTER);
-  append(box, control);
+  flow_append(box, control);
   return box;
+}
+
+GtkWidget* flow_row(unsigned int maximum_columns)
+{
+  auto* row = gtk_flow_box_new();
+  gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(row), GTK_SELECTION_NONE);
+  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(row), 1);
+  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(row), maximum_columns);
+  gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(row), 12);
+  gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(row), 8);
+  return row;
+}
+
+void flow_append(GtkWidget* row, GtkWidget* child)
+{
+  gtk_flow_box_insert(GTK_FLOW_BOX(row), child, -1);
 }
 
 GtkWidget* entry(std::string_view value, std::string_view placeholder, bool secret)
@@ -153,7 +240,7 @@ GtkWidget* entry(std::string_view value, std::string_view placeholder, bool secr
   gtk_entry_set_placeholder_text(GTK_ENTRY(result), std::string(placeholder).c_str());
   gtk_entry_set_visibility(GTK_ENTRY(result), !secret);
   gtk_widget_set_hexpand(result, TRUE);
-  gtk_widget_set_size_request(result, 300, -1);
+  gtk_widget_set_size_request(result, 180, -1);
   return result;
 }
 
@@ -167,7 +254,10 @@ GtkWidget* spin(double value, double minimum, double maximum)
 
 GtkWidget* button(std::string_view label, std::function<void()> action, bool enabled)
 {
-  auto* result = gtk_button_new_with_label(std::string(label).c_str());
+  // Composite buttons supply their own child and accessible name. A temporary GtkLabel
+  // would leave a stale LABELLED_BY relation when that child is replaced.
+  auto* result = label.empty() ? gtk_button_new()
+                               : gtk_button_new_with_label(std::string(label).c_str());
   gtk_widget_set_sensitive(result, enabled);
   g_signal_connect_data(result,
                         "clicked",
@@ -181,6 +271,7 @@ GtkWidget* button(std::string_view label, std::function<void()> action, bool ena
 GtkWidget* toggle(bool active, std::function<void(bool)> action)
 {
   auto* result = gtk_switch_new();
+  gtk_widget_set_halign(result, GTK_ALIGN_END);
   gtk_switch_set_active(GTK_SWITCH(result), active);
   g_signal_connect_data(result,
                         "state-set",

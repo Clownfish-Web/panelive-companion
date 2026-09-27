@@ -1,6 +1,7 @@
 #pragma once
 
 #include "capture_lifecycle.hpp"
+#include "obs_bgra_converter.hpp"
 #include "obs_preview_output.hpp"
 #include "shared_frame_publisher.hpp"
 
@@ -46,14 +47,13 @@ private:
   CaptureLifecycle lifecycle_;
   ipc::VideoCaptureDemandSnapshot demand_;
   std::function<void(CompanionStatusSnapshot)> status_handler_;
-  video_scale_info program_conversion_{};
+  ObsBgraConverter program_converter_;
   video_scale_info preview_conversion_{};
   ObsPreviewOutput preview_output_;
   obs_view_t* preview_view_ = nullptr;
   video_t* preview_video_ = nullptr;
   std::uint32_t width_ = 0;
   std::uint32_t height_ = 0;
-  FrameCadence program_cadence_;
   FrameCadence preview_cadence_;
   bool preview_callback_logged_ = false;
   bool reload_completion_pending_ = false;

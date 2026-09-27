@@ -62,7 +62,6 @@ bool ObsFrameCapture::start()
   if (width_ == 0 || height_ == 0)
     return false;
 
-  program_conversion_ = bgra_conversion(width_, height_);
   preview_conversion_ = bgra_conversion(width_, height_);
 
   obs_frontend_add_event_callback(handle_frontend_event, this);
@@ -92,10 +91,17 @@ void ObsFrameCapture::poll_demand(std::uint64_t now_ns)
   const bool changed = newest.generation != demand_.generation ||
                        newest.heartbeat_fresh != demand_.heartbeat_fresh ||
                        newest.demand != demand_.demand;
+  const bool tracks_changed =
+      (newest.demand.requested_program_fps != 0) != (demand_.demand.requested_program_fps != 0) ||
+      (newest.demand.requested_preview_fps != 0) != (demand_.demand.requested_preview_fps != 0);
+  if (tracks_changed)
+    lifecycle_.reconfigure_tracks();
   demand_ = newest;
   requested_program_fps_.store(demand_.demand.requested_program_fps, std::memory_order_release);
   requested_preview_fps_.store(demand_.demand.requested_preview_fps, std::memory_order_release);
-  const bool demanded = demand_.heartbeat_fresh && demand_.demand.active_video_client_count != 0;
+  const bool demanded =
+      demand_.heartbeat_fresh && demand_.demand.active_video_client_count != 0 &&
+      (demand_.demand.requested_program_fps != 0 || demand_.demand.requested_preview_fps != 0);
   if (reload_completion_pending_)
   {
     // Frontend notifications run before the event dispatcher returns to its normal UI loop.
@@ -166,13 +172,16 @@ void ObsFrameCapture::on_program_frame(video_data& frame)
   if (!capture_active_.load(std::memory_order_acquire))
     return;
   const auto requested_fps = requested_program_fps_.load(std::memory_order_acquire);
-  if (requested_fps == 0)
-    return;
-  if (!program_cadence_.should_publish(frame.timestamp, requested_fps))
+  const auto* converted = program_converter_.convert(frame, requested_fps);
+  if (!converted)
     return;
 
-  publisher_.publish(
-      VideoTrack::program, frame.data[0], width_, height_, frame.linesize[0], frame.timestamp);
+  publisher_.publish(VideoTrack::program,
+                     converted->data[0],
+                     width_,
+                     height_,
+                     converted->linesize[0],
+                     frame.timestamp);
 }
 
 void ObsFrameCapture::on_preview_frame(video_data& frame)
@@ -196,6 +205,8 @@ void ObsFrameCapture::on_preview_frame(video_data& frame)
 
 void ObsFrameCapture::refresh_preview_source()
 {
+  if (requested_preview_fps_.load(std::memory_order_acquire) == 0)
+    return;
   if (lifecycle_.state() != CompanionCaptureState::starting &&
       lifecycle_.state() != CompanionCaptureState::active)
     return;
@@ -219,17 +230,37 @@ bool ObsFrameCapture::activate_capture()
 {
   if (lifecycle_.consume_capture_generation_reset())
     publisher_.reset_capture_generation();
-  program_cadence_ = {};
+  obs_video_info video_info{};
+  if (!obs_get_video_info(&video_info))
+    return false;
+  std::tie(width_, height_) = scaled_frame_size(video_info.base_width, video_info.base_height);
+  if (width_ == 0 || height_ == 0)
+    return false;
+  preview_conversion_ = bgra_conversion(width_, height_);
   preview_cadence_ = {};
   preview_callback_logged_ = false;
-  obs_add_raw_video_callback(&program_conversion_, receive_program_frame, this);
-  program_callback_registered_ = true;
-  refresh_preview_source();
-  if (!preview_view_)
+  if (demand_.demand.requested_program_fps != 0)
   {
-    obs_remove_raw_video_callback(receive_program_frame, this);
-    program_callback_registered_ = false;
-    return false;
+    const auto* native = video_output_get_info(obs_get_video());
+    if (!native)
+      return false;
+    video_scale_info source{};
+    source.format = native->format;
+    source.width = native->width;
+    source.height = native->height;
+    source.range = native->range;
+    source.colorspace = native->colorspace;
+    if (!program_converter_.configure(source, width_, height_))
+      return false;
+    // Let the callback reject unwanted frames before OBS's expensive CPU scaler runs.
+    obs_add_raw_video_callback(nullptr, receive_program_frame, this);
+    program_callback_registered_ = true;
+  }
+  if (demand_.demand.requested_preview_fps != 0)
+  {
+    refresh_preview_source();
+    if (!preview_view_)
+      return false;
   }
   capture_active_.store(true, std::memory_order_release);
   blog(LOG_INFO,
@@ -253,7 +284,7 @@ void ObsFrameCapture::deactivate_capture()
     program_callback_registered_ = false;
   }
   destroy_preview_view();
-  program_cadence_ = {};
+  program_converter_.reset();
   preview_cadence_ = {};
 }
 
@@ -291,11 +322,21 @@ void ObsFrameCapture::publish_status()
 
 bool ObsFrameCapture::create_preview_view()
 {
+  obs_video_info video_info{};
+  if (!obs_get_video_info(&video_info))
+    return false;
+  // Keep scene coordinates at canvas size, but read back at most 960x540 monitoring pixels.
+  video_info.output_width = width_;
+  video_info.output_height = height_;
+  video_info.output_format = VIDEO_FORMAT_BGRA;
+  video_info.gpu_conversion = false;
+  video_info.colorspace = VIDEO_CS_709;
+  video_info.range = VIDEO_RANGE_FULL;
   preview_view_ = obs_view_create();
   if (!preview_view_)
     return false;
 
-  preview_video_ = obs_view_add(preview_view_);
+  preview_video_ = obs_view_add2(preview_view_, &video_info);
   if (!preview_video_)
   {
     obs_view_destroy(preview_view_);

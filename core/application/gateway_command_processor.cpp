@@ -1,4 +1,5 @@
 #include "gateway_command_processor.hpp"
+#include "command_authorization.hpp"
 #include <studio_remote/common/bounded_json_size.hpp>
 
 #include <chrono>
@@ -167,16 +168,18 @@ json GatewayCommandProcessor::execute(const Device& device,
   }
   const auto& command_id = *command_id_value;
 
-  const auto command_key = device.id + ":" + command_id;
+  if (!authorized(device))
+  {
+    audit_.command(device.id, action, "", "rejected", command_id);
+    auto rejected = command_result(body, "rejected", "operator role required");
+    rejected["reasonCode"] = "permission-required";
+    return rejected;
+  }
+  const auto command_key =
+      device.id + ":" + std::to_string(device.pairing_generation) + ":" + command_id;
   if (auto cached = cached_response(command_key))
   {
     return *cached;
-  }
-
-  if (device.role < Role::operator_)
-  {
-    audit_.command(device.id, action, "", "rejected", command_id);
-    return command_result(body, "rejected", "operator role required");
   }
 
   auto command_body = body;
@@ -856,13 +859,18 @@ bool GatewayCommandProcessor::queue_operation(Device device,
 {
   {
     std::lock_guard lock(operation_mutex_);
-    if (operations_.size() >= operation_queue_capacity)
+    if (stopping_ || operations_.size() >= operation_queue_capacity)
       return false;
     operations_.push_back(QueuedOperation{
         std::move(device), std::move(action), std::move(plan), std::move(operation_id)});
   }
   operation_cv_.notify_one();
   return true;
+}
+
+bool GatewayCommandProcessor::authorized(const Device& device) const
+{
+  return has_current_control_authority(audit_, device);
 }
 
 void GatewayCommandProcessor::operation_loop()
@@ -898,6 +906,19 @@ void GatewayCommandProcessor::run_operation(const Device& device,
 {
   try
   {
+    const auto admit_execution = [&]
+    {
+      if (!stopping_ && authorized(device))
+        return true;
+      audit_.command(device.id, action, plan.audit_target, "rejected", operation_id);
+      emit_failure(plan.completion_data.value("commandId", ""),
+                   operation_id,
+                   stopping_ ? "backend-unavailable" : "permission-required",
+                   stopping_ ? "command worker is stopping" : "command authority changed");
+      return false;
+    };
+    if (!admit_execution())
+      return;
     const auto current_state = state_.command_state_snapshot();
     if (!current_state.fresh())
     {
@@ -978,8 +999,22 @@ void GatewayCommandProcessor::run_operation(const Device& device,
       return;
     }
 
+    // Backend verification can block. A credential change during that wait must take effect
+    // before a native operation is issued, including a revoke followed by a new pairing.
+    if (!admit_execution())
+      return;
     current_plan.completion_data["_baselineRevision"] = current_state.revision();
-    obs_.request(current_plan.obs_request, current_plan.obs_request_data);
+    if (!obs_.request_authorized(current_plan.obs_request,
+                                 current_plan.obs_request_data,
+                                 [&] { return !stopping_ && authorized(device); }))
+    {
+      audit_.command(device.id, action, plan.audit_target, "rejected", operation_id);
+      emit_failure(plan.completion_data.value("commandId", ""),
+                   operation_id,
+                   stopping_ ? "backend-unavailable" : "permission-required",
+                   "command authority changed before provider dispatch");
+      return;
+    }
 
     const auto deadline = Clock::now() + command_completion_timeout;
     while (!stopping_ && Clock::now() < deadline)

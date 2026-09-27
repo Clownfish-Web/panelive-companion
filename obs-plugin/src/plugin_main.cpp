@@ -18,10 +18,15 @@ namespace
 {
 
 // OBS accepts plugins that report an older API version as long as they use
-// only that version's stable ABI. Every OBS function used by this module was
-// already public in OBS 28. Reporting that floor keeps one binary loadable by
-// OBS 28 and later instead of tying it to the build machine's OBS 32 headers.
-constexpr std::uint32_t minimum_obs_api_version = MAKE_SEMANTIC_VERSION(28, 0, 0);
+// only that version's stable ABI. OBS 29 introduced obs_view_add2, required for
+// Preview output at monitoring resolution independently of production output.
+// OBS 29.1 introduced the source UUID APIs used by audio and scene-item mapping.
+#if defined(__linux__)
+// Linux packages retain the native OBS 30 shared-library ABI floor.
+constexpr std::uint32_t minimum_obs_api_version = MAKE_SEMANTIC_VERSION(30, 0, 0);
+#else
+constexpr std::uint32_t minimum_obs_api_version = MAKE_SEMANTIC_VERSION(29, 1, 0);
+#endif
 
 obs_module_t* module_pointer = nullptr;
 

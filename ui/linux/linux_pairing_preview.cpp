@@ -51,9 +51,10 @@ void LinuxManagementWindow::open_pairing_preview()
   try
   {
     pairing_preview_source_ = controller_.state().pairing;
-    pairing_preview_image_ = make_pairing_qr_image(pairing_preview_source_->payload);
+    const auto& source = pairing_preview_source_.value();
+    pairing_preview_image_ = make_pairing_qr_image(source.payload);
     pairing_preview_.open(pairing_preview_image_.pixels,
-                          pairing_preview_source_->expires_unix_seconds,
+                          source.expires_unix_seconds,
                           std::chrono::steady_clock::now(),
                           unix_seconds());
     auto* panel = make_preview_panel(pairing_preview_image_, [this] { close_pairing_preview(); });
@@ -144,6 +145,6 @@ void LinuxManagementWindow::close_pairing_preview()
   while (auto* child = gtk_widget_get_first_child(pairing_preview_host_))
     gtk_box_remove(GTK_BOX(pairing_preview_host_), child);
   pairing_preview_countdown_ = nullptr;
-  gtk_widget_set_sensitive(content_, TRUE);
+  gtk_widget_set_sensitive(content_, !(narrow_window_ && navigation_expanded_));
 }
 } // namespace studio_remote::linux

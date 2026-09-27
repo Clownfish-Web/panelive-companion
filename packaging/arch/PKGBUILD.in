@@ -1,0 +1,37 @@
+# Generated from a staged payload using configure-recipe.cmake.
+# The helper remains an independently installed and licensed package.
+pkgbase=panelive-companion
+pkgname=(panelive-companion panelive-companion-obs-plugin)
+pkgver=@PANELIVE_ARCH_VERSION@
+pkgrel=1
+pkgdesc='Secure mobile production control, monitoring and teleprompter'
+arch=('x86_64')
+url='https://github.com/Clownfish-Web/panelive-companion'
+license=('Apache-2.0')
+options=('!strip' '!debug')
+source=("panelive-companion-${pkgver}-payload.tar.zst")
+sha256sums=('@PANELIVE_PAYLOAD_SHA256@')
+
+package_panelive-companion() {
+  # D-Bus is also a runtime service dependency, not just an ELF dependency.
+  depends=('glibc' 'libgcc' 'libstdc++' 'gtk4' 'libadwaita' 'libsecret' 'avahi' 'libpulse'
+           'libjpeg-turbo' 'glib2' 'dbus' 'hicolor-icon-theme')
+  optdepends=('gnome-keyring: Secret Service credentials in a graphical session'
+              'quickshell: optional Omarchy operational bar widget'
+              'qt6-declarative: QML controls for the optional Omarchy widget'
+              'panelive-companion-obs-plugin: OBS Program, Preview and monitor audio')
+  cp -a "${srcdir}/companion/usr" "${pkgdir}/usr"
+  install -Dm644 "${pkgdir}/usr/share/panelive-companion/LICENSE" \
+    "${pkgdir}/usr/share/licenses/panelive-companion/LICENSE"
+  install -Dm644 "${pkgdir}/usr/share/panelive-companion/NOTICE" \
+    "${pkgdir}/usr/share/licenses/panelive-companion/NOTICE"
+}
+
+package_panelive-companion-obs-plugin() {
+  pkgdesc='Headless OBS media helper for PaneLive Companion'
+  license=('GPL-2.0-or-later')
+  depends=('glibc' 'libgcc' 'libstdc++' 'obs-studio>=30.0' 'qt6-base')
+  cp -a "${srcdir}/helper/usr" "${pkgdir}/usr"
+  install -Dm644 "${pkgdir}/usr/share/obs/obs-plugins/panelive-companion-obs-plugin/LICENSE" \
+    "${pkgdir}/usr/share/licenses/panelive-companion-obs-plugin/LICENSE"
+}

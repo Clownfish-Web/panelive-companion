@@ -1,6 +1,7 @@
 #pragma once
 
 #import "ManagementBranding.h"
+#import "ManagementNavigationImages.h"
 #import "ManagementPairingPreview.h"
 #import "ManagementPresentation.h"
 #import "ManagementTeleprompter.h"

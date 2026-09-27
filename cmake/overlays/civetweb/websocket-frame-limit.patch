@@ -1,0 +1,19 @@
+diff --git a/src/civetweb.c b/src/civetweb.c
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -13218,6 +13218,15 @@ read_websocket(struct mg_connection *conn,
+ 		}
+ 
+ 		if ((header_len > 0) && (body_len >= header_len)) {
++			/* PaneLive accepts at most 1 MiB per frame. Check before
++			 * allocation or payload reads, not in the application callback. */
++			if (data_len > (uint64_t)(1024u * 1024u)) {
++				mg_cry_internal(conn,
++				                "%s",
++				                "websocket frame exceeds size limit");
++				break;
++			}
++
+ 			/* Allocate space to hold websocket payload */
+ 			unsigned char *data = mem;
+ 

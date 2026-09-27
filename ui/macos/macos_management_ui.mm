@@ -1,5 +1,6 @@
 #include "macos_management_ui.hpp"
 
+#include "macos_client_notifications.hpp"
 #include "macos_tray_icon.hpp"
 #include "management_approvals.hpp"
 #include "management_bridge.hpp"
@@ -32,10 +33,14 @@ public:
     approvals_ = make_management_approvals(
         window_, worker, std::move(decide_role), std::move(decide_global));
     tray_ = std::make_unique<MacosTrayIcon>(tray_actions());
+    __weak PLManagementWindow* window = window_;
+    notifications_ = std::make_unique<MacosClientNotifications>(
+        bridge_, [window] { return window.isVisible; }, [window] { [window show]; });
   }
 
   ~Impl()
   {
+    notifications_.reset();
     if (approvals_)
       approvals_->close();
     tray_.reset();
@@ -113,6 +118,7 @@ private:
   PLManagementWindow* window_ = nil;
   std::unique_ptr<ManagementApprovalDispatcher> approvals_;
   std::unique_ptr<MacosTrayIcon> tray_;
+  std::unique_ptr<MacosClientNotifications> notifications_;
 };
 
 MacosManagementUi::MacosManagementUi(

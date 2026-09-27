@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -11,11 +12,24 @@
 
 namespace studio_remote::linux::ui
 {
+struct FocusSnapshot
+{
+  std::string widget_name;
+  std::optional<std::pair<int, int>> selection;
+};
+
+FocusSnapshot capture_focus(GtkWindow* window, GtkWidget* content);
+void restore_focus(GtkWindow* window, GtkWidget* content, const FocusSnapshot& snapshot);
+
 GtkWidget* page(std::string_view title, std::string_view description);
+GtkWidget* dispatch_icon(std::string_view name, int size = 18);
 GtkWidget* card(GtkWidget* contents);
 GtkWidget* section_title(std::string_view text);
 GtkWidget* description(std::string_view text);
 GtkWidget* form_row(std::string_view title, GtkWidget* control, std::string_view detail = {});
+// A GTK-owned wrapping group for parallel controls. Append children with flow_append.
+GtkWidget* flow_row(unsigned int maximum_columns = 6);
+void flow_append(GtkWidget* row, GtkWidget* child);
 GtkWidget* entry(std::string_view value, std::string_view placeholder = {}, bool secret = false);
 GtkWidget* spin(double value, double minimum, double maximum);
 GtkWidget* button(std::string_view label, std::function<void()> action, bool enabled = true);

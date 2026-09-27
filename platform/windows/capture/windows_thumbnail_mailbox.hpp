@@ -2,7 +2,7 @@
 
 #include <studio_remote/ipc/source_thumbnail_mapping.hpp>
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 
 namespace studio_remote::windows
 {
@@ -22,7 +22,7 @@ public:
 
 private:
   WindowsThumbnailMailbox() = default;
-  HANDLE handle_ = nullptr;
+  IpcMappingHandle handle_;
   ipc::SourceThumbnailMapping* mapping_ = nullptr;
 };
 } // namespace studio_remote::windows

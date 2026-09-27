@@ -64,6 +64,8 @@ set(OBS_PLUGIN_COMMON_SOURCES
   src/frontend_reload_barrier.hpp
   src/obs_frame_capture.cpp
   src/obs_frame_capture.hpp
+  src/obs_bgra_converter.cpp
+  src/obs_bgra_converter.hpp
   src/obs_audio_monitor.cpp
   src/obs_audio_monitor_mapping.cpp
   src/obs_audio_monitor.hpp
@@ -90,6 +92,8 @@ set(OBS_PLUGIN_COMMON_SOURCES
 list(APPEND OBS_PLUGIN_COMMON_SOURCES
   src/shared_thumbnail_mailbox.cpp
   src/shared_thumbnail_mailbox.hpp
+  src/shared_thumbnail_publication.cpp
+  src/shared_thumbnail_publication.hpp
   src/thumbnail_capture_policy.hpp
   src/thumbnail_frame_readiness.hpp)
 
@@ -146,7 +150,8 @@ elseif(APPLE)
 else()
   add_library(panelive-companion-obs-plugin MODULE
     ${OBS_PLUGIN_COMMON_SOURCES}
-    src/plugin_main_linux.cpp
+    src/plugin_main.cpp
+    src/obs_companion_status_ui.cpp
     src/obs_frontend_symbols_linux.cpp
     src/shared_frame_publisher.hpp
     src/shared_frame_publisher_linux.cpp)
@@ -196,6 +201,24 @@ if(WIN32)
 elseif(APPLE)
   set(OBS_PLUGIN_BINARY_DESTINATION "obs-plugins")
   set(OBS_PLUGIN_DATA_DESTINATION "obs-plugins/${OBS_PLUGIN_PACKAGE_ID}.plugin/Contents/Resources")
+elseif(STUDIO_REMOTE_LINUX_DISTRIBUTION STREQUAL "ARCH")
+  if(NOT DEFINED OBS_PLUGIN_LINUX_INSTALL_DIR)
+    if(NOT CMAKE_LIBRARY_ARCHITECTURE)
+      message(FATAL_ERROR
+        "Set OBS_PLUGIN_LINUX_INSTALL_DIR to the native OBS plugin directory on this distribution")
+    endif()
+    set(OBS_PLUGIN_LINUX_INSTALL_DIR
+      "${CMAKE_INSTALL_LIBDIR}/${CMAKE_LIBRARY_ARCHITECTURE}/obs-plugins" CACHE STRING
+      "OBS plugin directory relative to the installation prefix")
+  endif()
+  if(OBS_PLUGIN_LINUX_INSTALL_DIR STREQUAL "" OR
+     IS_ABSOLUTE "${OBS_PLUGIN_LINUX_INSTALL_DIR}" OR
+     OBS_PLUGIN_LINUX_INSTALL_DIR MATCHES "(^|/)\\.\\.(/|$)")
+    message(FATAL_ERROR "OBS_PLUGIN_LINUX_INSTALL_DIR must be a nonempty relative package path")
+  endif()
+  set(OBS_PLUGIN_BINARY_DESTINATION "${OBS_PLUGIN_LINUX_INSTALL_DIR}")
+  set(OBS_PLUGIN_DATA_DESTINATION
+    "${CMAKE_INSTALL_DATADIR}/obs/obs-plugins/${OBS_PLUGIN_PACKAGE_ID}")
 else()
   if(NOT CMAKE_LIBRARY_ARCHITECTURE)
     message(FATAL_ERROR "Linux OBS plugin packaging requires a library architecture")

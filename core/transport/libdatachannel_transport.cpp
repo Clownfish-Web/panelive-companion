@@ -5,6 +5,7 @@
 #include "libdatachannel_peer.hpp"
 #include "vp8_rtp_packetizer.hpp"
 #include "webrtc_pending_offer.hpp"
+#include "webrtc_remote_offer.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,6 +20,10 @@
 #include <studio_remote/credentials/credential_store.hpp>
 #include <studio_remote/ipc/audio_monitor_mapping.hpp>
 #include <studio_remote/media/frame_cadence.hpp>
+#include <studio_remote/media/video_rtp_timeline.hpp>
+#include <studio_remote/protocol/client_json.hpp>
+#include <studio_remote/transport/client_frame_budget.hpp>
+#include <studio_remote/transport/sdp_offer_limits.hpp>
 
 #if !RTC_ENABLE_MEDIA
 #error "PaneLive Companion requires libdatachannel media support; enable the vcpkg srtp feature"
@@ -98,50 +103,6 @@ std::string_view gathering_state_name(rtc::PeerConnection::GatheringState state)
   }
   return "unknown";
 }
-uint32_t rtp_timestamp_from_ns(std::uint64_t timestamp_ns)
-{
-  const auto seconds = timestamp_ns / 1'000'000'000ULL;
-  const auto remainder = timestamp_ns % 1'000'000'000ULL;
-  return static_cast<std::uint32_t>(seconds * 90'000ULL + remainder * 90'000ULL / 1'000'000'000ULL);
-}
-
-class VideoRtpTimeline
-{
-public:
-  std::uint32_t map(std::uint64_t source_ns,
-                    std::uint64_t source_generation,
-                    std::uint32_t nominal_duration) noexcept
-  {
-    const auto source_timestamp = rtp_timestamp_from_ns(source_ns);
-    if (!started_)
-    {
-      started_ = true;
-      source_generation_ = source_generation;
-      last_timestamp_ = source_timestamp;
-      return last_timestamp_;
-    }
-
-    if (source_generation_ != source_generation)
-    {
-      source_generation_ = source_generation;
-      offset_ = last_timestamp_ + nominal_duration - source_timestamp;
-    }
-
-    auto timestamp = source_timestamp + offset_;
-    const auto forward_distance = timestamp - last_timestamp_;
-    if (forward_distance == 0 || forward_distance >= 0x80000000U)
-      timestamp = last_timestamp_ + nominal_duration;
-    last_timestamp_ = timestamp;
-    return timestamp;
-  }
-
-private:
-  std::uint64_t source_generation_ = 0;
-  std::uint32_t offset_ = 0;
-  std::uint32_t last_timestamp_ = 0;
-  bool started_ = false;
-};
-
 struct OfferedVideo
 {
   std::string mid;
@@ -469,6 +430,8 @@ MediaOfferResult WebRtcHub::answer(std::string_view device_id,
     return *failure;
   if (authorized && !authorized())
     return MediaOfferFailure::device_removed;
+  if (!sdp_offer_within_limits(offer_sdp))
+    return MediaOfferFailure::sdp_limits_exceeded;
   preferences.program = normalize_video_preferences(preferences.program);
   preferences.preview = normalize_video_preferences(preferences.preview);
   emit_diagnostic_event("offerReceived",
@@ -480,12 +443,14 @@ MediaOfferResult WebRtcHub::answer(std::string_view device_id,
                          {"audioMasterRequested", preferences.audio_master}});
   if (const auto failure = pending.failure())
     return *failure;
-  rtc::Description offer(std::string(offer_sdp), "offer");
-  auto videos = offered_videos(offer);
-  const auto audios = offered_audios(offer);
+  auto offer = parse_webrtc_remote_offer(offer_sdp);
+  if (!offer)
+    return MediaOfferFailure::invalid_sdp;
+  auto videos = offered_videos(*offer);
+  const auto audios = offered_audios(*offer);
   std::size_t audio_index = 0;
   if (videos.empty())
-    throw std::invalid_argument("WebRTC offer has no receive-capable VP8 video m-line");
+    return MediaOfferFailure::invalid_sdp;
   assign_track_ssrcs(*peer);
   peer->audio_epoch = next_audio_epoch_.fetch_add(1, std::memory_order_relaxed);
   peer->media_session_id =
@@ -506,6 +471,13 @@ MediaOfferResult WebRtcHub::answer(std::string_view device_id,
   config.disableAutoNegotiation = true;
   config.forceMediaTransport = true;
   peer->connection = std::make_shared<rtc::PeerConnection>(config);
+  // Only our locally created telemetry channel carries application messages. Drain incoming
+  // channels immediately so the transport cannot retain unhandled channels and their queues.
+  peer->connection->onDataChannel([](std::shared_ptr<rtc::DataChannel> channel)
+                                  { channel->close(); });
+  // Explicit senders below own every supported media section. Release automatically created
+  // reciprocal tracks so the answer rejects unselected sections instead of accepting uploads.
+  peer->connection->onTrack([](std::shared_ptr<rtc::Track> track) { track->close(); });
   peer->connection->onLocalDescription([](rtc::Description) {});
   peer->connection->onGatheringStateChange(
       [this, weak = std::weak_ptr(peer)](rtc::PeerConnection::GatheringState state)
@@ -747,52 +719,67 @@ MediaOfferResult WebRtcHub::answer(std::string_view device_id,
                                 {{"audioEpoch", current->audio_epoch}, {"channel", "telemetry"}});
       });
   peer->telemetry->onMessage(
-      [this, weak = std::weak_ptr(peer)](std::variant<rtc::binary, rtc::string> message)
+      [this, weak = std::weak_ptr(peer), budget = ClientFrameBudget{}](
+          std::variant<rtc::binary, rtc::string> message) mutable
       {
-        if (auto p = weak.lock())
-          if (auto* text = std::get_if<rtc::string>(&message))
-            try
+        const auto p = weak.lock();
+        if (!p || p->removal_requested.load(std::memory_order_acquire) ||
+            p->retiring.load(std::memory_order_acquire))
+          return;
+        // libdatachannel serializes this callback. Charge every complete message before parsing,
+        // including empty, binary and malformed input. Retire on the hub worker, outside the
+        // native callback lock; cancellation also covers an offer not yet published.
+        const auto bytes = std::visit([](const auto& payload) { return payload.size(); }, message);
+        if (!budget.admit(bytes, ClientFrameBudget::Clock::now()))
+        {
+          p->cancel_offer(MediaOfferFailure::transport_closed);
+          p->removal_requested.store(true, std::memory_order_release);
+          return;
+        }
+        if (auto* text = std::get_if<rtc::string>(&message))
+          try
+          {
+            auto value = parse_client_json_object(*text);
+            if (value.value("type", "") == "mixerVisibility")
+              p->mixer_open = value.value("open", false);
+            else if (value.value("type", "") == "audioMonitorPlayback" && value.is_object())
             {
-              auto value = json::parse(*text);
-              if (value.value("type", "") == "mixerVisibility")
-                p->mixer_open = value.value("open", false);
-              else if (value.value("type", "") == "audioMonitorPlayback" && value.is_object())
+              const auto bounded = [&value](const char* name,
+                                            std::uint64_t maximum) -> std::optional<std::uint64_t>
               {
-                const auto bounded = [&value](const char* name,
-                                              std::uint64_t maximum) -> std::optional<std::uint64_t>
-                {
-                  const auto found = value.find(name);
-                  if (found == value.end() || !found->is_number_unsigned())
-                    return std::nullopt;
-                  return std::min(found->get<std::uint64_t>(), maximum);
-                };
-                const auto plc_frames = bounded("plcFrames", 1'000'000'000ULL);
-                const auto underruns = bounded("audioTrackUnderruns", 1'000'000'000ULL);
-                const auto output_frames = bounded("outputFrames", 10'000'000'000ULL);
-                const auto jitter_delay = bounded("jitterBufferDelayMs", 10'000ULL);
-                if (!plc_frames || !underruns || !output_frames || !jitter_delay)
-                  return;
-                p->android_plc_frames.store(*plc_frames, std::memory_order_relaxed);
-                p->android_audio_track_underruns.store(*underruns, std::memory_order_relaxed);
-                p->android_output_frames.store(*output_frames, std::memory_order_relaxed);
-                p->android_jitter_buffer_delay_ms.store(static_cast<std::uint32_t>(*jitter_delay),
-                                                        std::memory_order_relaxed);
-                p->android_audio_reports.fetch_add(1, std::memory_order_relaxed);
-                emit_diagnostic_event("androidAudioPlaybackReport",
-                                      {{"audioEpoch", p->audio_epoch},
-                                       {"plcFrames", *plc_frames},
-                                       {"audioTrackUnderruns", *underruns},
-                                       {"outputFrames", *output_frames},
-                                       {"jitterBufferDelayMs", *jitter_delay}});
-              }
+                const auto found = value.find(name);
+                if (found == value.end() || !found->is_number_unsigned())
+                  return std::nullopt;
+                return std::min(found->get<std::uint64_t>(), maximum);
+              };
+              const auto plc_frames = bounded("plcFrames", 1'000'000'000ULL);
+              const auto underruns = bounded("audioTrackUnderruns", 1'000'000'000ULL);
+              const auto output_frames = bounded("outputFrames", 10'000'000'000ULL);
+              const auto jitter_delay = bounded("jitterBufferDelayMs", 10'000ULL);
+              if (!plc_frames || !underruns || !output_frames || !jitter_delay)
+                return;
+              p->android_plc_frames.store(*plc_frames, std::memory_order_relaxed);
+              p->android_audio_track_underruns.store(*underruns, std::memory_order_relaxed);
+              p->android_output_frames.store(*output_frames, std::memory_order_relaxed);
+              p->android_jitter_buffer_delay_ms.store(static_cast<std::uint32_t>(*jitter_delay),
+                                                      std::memory_order_relaxed);
+              p->android_audio_reports.fetch_add(1, std::memory_order_relaxed);
+              emit_diagnostic_event("androidAudioPlaybackReport",
+                                    {{"audioEpoch", p->audio_epoch},
+                                     {"plcFrames", *plc_frames},
+                                     {"audioTrackUnderruns", *underruns},
+                                     {"outputFrames", *output_frames},
+                                     {"jitterBufferDelayMs", *jitter_delay}});
             }
-            catch (...)
-            {
-            }
+          }
+          catch (...)
+          {
+          }
       });
   if (const auto failure = pending.failure())
     return *failure;
-  peer->connection->setRemoteDescription(std::move(offer));
+  if (!apply_webrtc_remote_offer(*peer->connection, std::move(*offer)))
+    return MediaOfferFailure::invalid_sdp;
   peer->connection->setLocalDescription();
   {
     std::unique_lock lock(peer->description_mutex);

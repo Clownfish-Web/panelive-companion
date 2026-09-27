@@ -19,12 +19,7 @@ struct ManagementTeleprompterPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(title).font(.system(size: 28, weight: .semibold))
-                    Text(clientIdentity).foregroundStyle(.secondary)
-                }
-                Spacer()
+            ManagementPageHeading(title: title, subtitle: clientIdentity) {
                 if !state.libraryView {
                     Button("Back to clients") {
                         discardIfNeeded { model.bridge.closeTeleprompter() }

@@ -30,11 +30,8 @@ struct ManagementDiagnosticsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Diagnostics").font(.system(size: 28, weight: .semibold))
-                Text("Run local audio checks.")
-                    .foregroundStyle(.secondary)
-            }
+            ManagementPageHeading(title: "Diagnostics",
+                subtitle: "Run local audio checks.")
             ScrollView {
                 VStack(spacing: 18) {
                     audioCard

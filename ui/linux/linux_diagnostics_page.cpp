@@ -90,16 +90,16 @@ GtkWidget* make_linux_diagnostics_page(LinuxPageContext context)
   }
   auto* output = named(gtk_drop_down_new(nullptr, nullptr), "audio-output");
   refresh_choices(output, std::move(choices), selected);
-  auto* output_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  auto* output_row = flow_row(2);
   gtk_widget_set_hexpand(output, TRUE);
-  append(output_row, output);
-  append(output_row,
-         button("Refresh devices",
-                [context]
-                {
-                  context.controller.refresh();
-                  context.redraw();
-                }));
+  flow_append(output_row, output);
+  flow_append(output_row,
+              button("Refresh devices",
+                     [context]
+                     {
+                       context.controller.refresh();
+                       context.redraw();
+                     }));
   append(audio, output_row);
 
   auto* gain_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
@@ -129,25 +129,26 @@ GtkWidget* make_linux_diagnostics_page(LinuxPageContext context)
     context.controller.start_audio(selected, tap);
     context.redraw();
   };
-  auto* actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  auto* actions = flow_row(5);
   G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-  append(
+  flow_append(
       actions,
       named(button("Play pre-Opus IPC", [start] { start(ManagementAudioDiagnosticTap::pre_opus); }),
             "play-pre-opus"));
-  append(actions,
-         button("Play post-Opus", [start] { start(ManagementAudioDiagnosticTap::post_opus); }));
-  append(actions,
-         named(button(
-                   "Stop",
-                   [context]
-                   {
-                     context.controller.stop_audio();
-                     context.redraw();
-                   },
-                   state.audio_status.playing),
-               "audio-stop"));
-  append(
+  flow_append(
+      actions,
+      button("Play post-Opus", [start] { start(ManagementAudioDiagnosticTap::post_opus); }));
+  flow_append(actions,
+              named(button(
+                        "Stop",
+                        [context]
+                        {
+                          context.controller.stop_audio();
+                          context.redraw();
+                        },
+                        state.audio_status.playing),
+                    "audio-stop"));
+  flow_append(
       actions,
       named(button(state.audio_status.debug_log_active ? "Complete debug log" : "Begin debug log",
                    [context]
@@ -159,28 +160,29 @@ GtkWidget* make_linux_diagnostics_page(LinuxPageContext context)
                      context.redraw();
                    }),
             "audio-debug"));
-  append(actions,
-         named(button(
-                   "Save report",
-                   [context]
-                   {
-                     auto* chooser = gtk_file_chooser_native_new("Save audio diagnostics",
-                                                                 context.window,
-                                                                 GTK_FILE_CHOOSER_ACTION_SAVE,
-                                                                 "Save",
-                                                                 "Cancel");
-                     gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(chooser),
-                                                       "panelive-audio-diagnostics.jsonl");
-                     g_signal_connect_data(chooser,
-                                           "response",
-                                           G_CALLBACK(save_response),
-                                           new SaveContext{context.controller.audio_debug_report()},
-                                           delete_save_context,
-                                           static_cast<GConnectFlags>(0));
-                     gtk_native_dialog_show(GTK_NATIVE_DIALOG(chooser));
-                   },
-                   state.audio_status.debug_log_available),
-               "audio-save"));
+  flow_append(actions,
+              named(button(
+                        "Save report",
+                        [context]
+                        {
+                          auto* chooser = gtk_file_chooser_native_new("Save audio diagnostics",
+                                                                      context.window,
+                                                                      GTK_FILE_CHOOSER_ACTION_SAVE,
+                                                                      "Save",
+                                                                      "Cancel");
+                          gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(chooser),
+                                                            "panelive-audio-diagnostics.jsonl");
+                          g_signal_connect_data(
+                              chooser,
+                              "response",
+                              G_CALLBACK(save_response),
+                              new SaveContext{context.controller.audio_debug_report()},
+                              delete_save_context,
+                              static_cast<GConnectFlags>(0));
+                          gtk_native_dialog_show(GTK_NATIVE_DIALOG(chooser));
+                        },
+                        state.audio_status.debug_log_available),
+                    "audio-save"));
   G_GNUC_END_IGNORE_DEPRECATIONS
   append(audio, actions);
 

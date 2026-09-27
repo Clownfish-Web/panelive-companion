@@ -234,7 +234,9 @@ WinUiManagementWindow::WinUiManagementWindow(std::string gateway_name,
       [this](const auto&, const auto&)
       {
         controller_.refresh();
-        redraw_page();
+        const auto hwnd = window_handle();
+        if (IsWindowVisible(hwnd) && !IsIconic(hwnd))
+          redraw_page();
       });
 
   const auto app_window = window_.AppWindow();
@@ -273,6 +275,7 @@ WinUiManagementWindow::WinUiManagementWindow(std::string gateway_name,
   current_page_ = controller_.state().initial_page;
   rebuild_navigation();
   redraw_page();
+  refresh_timer_.Start();
 }
 
 void WinUiManagementWindow::activate()
@@ -293,7 +296,6 @@ void WinUiManagementWindow::hide()
 {
   cancel_client_identification();
   close_pairing_preview();
-  refresh_timer_.Stop();
   if (const auto hwnd = window_handle())
     ShowWindow(hwnd, SW_HIDE);
 }

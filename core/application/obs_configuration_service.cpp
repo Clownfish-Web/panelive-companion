@@ -1,4 +1,5 @@
 #include "obs_configuration_service.hpp"
+#include "command_authorization.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -83,12 +84,14 @@ ObsConfigurationService::ObsConfigurationService(IObsAdapter& obs,
 std::optional<ObsConfigurationFailure>
 ObsConfigurationService::authorize(const Device& device) const
 {
-  if (device.role < Role::operator_)
+  if (!has_current_control_authority(audit_, device))
     return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
   if (device.production_provider != "obs" || obs_.backend_info().id != "obs")
     return ObsConfigurationFailure{ObsConfigurationFailureCode::unsupported};
   if (!obs_.connected())
     return ObsConfigurationFailure{ObsConfigurationFailureCode::backend_unavailable};
+  if (!has_current_control_authority(audit_, device))
+    return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
   return std::nullopt;
 }
 
@@ -134,7 +137,12 @@ ObsProfileCatalogResult ObsConfigurationService::profiles(const Device& device)
   std::lock_guard operation_lock(operation_mutex_);
   try
   {
-    return read_profiles();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
+    auto catalog = read_profiles();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
+    return catalog;
   }
   catch (...)
   {
@@ -149,7 +157,12 @@ ObsSceneCollectionCatalogResult ObsConfigurationService::scene_collections(const
   std::lock_guard operation_lock(operation_mutex_);
   try
   {
-    return read_scene_collections();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
+    auto catalog = read_scene_collections();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
+    return catalog;
   }
   catch (...)
   {
@@ -165,7 +178,11 @@ ObsConfigurationService::select_profile(const Device& device, const ObsProfileSe
   std::lock_guard operation_lock(operation_mutex_);
   try
   {
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
     const auto before = read_profiles();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
     if (!contains_name(before.names, selection.profile_name))
       return ObsConfigurationFailure{ObsConfigurationFailureCode::profile_not_found,
                                      before.current_name};
@@ -174,14 +191,20 @@ ObsConfigurationService::select_profile(const Device& device, const ObsProfileSe
     if (before.current_name != selection.expected_current_name)
       return ObsConfigurationFailure{ObsConfigurationFailureCode::profile_precondition_failed,
                                      before.current_name};
-    if (live_output_active())
+    const auto output_active = live_output_active();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
+    if (output_active)
       return ObsConfigurationFailure{ObsConfigurationFailureCode::live_output_active,
                                      before.current_name};
 
-    obs_.request("SetCurrentProfile",
-                 {{"profileName", selection.profile_name}},
-                 std::source_location::current(),
-                 "select the profile authorized by the paired client");
+    if (!obs_.request_authorized(
+            "SetCurrentProfile",
+            {{"profileName", selection.profile_name}},
+            [&] { return has_current_control_authority(audit_, device); },
+            std::source_location::current(),
+            "select the profile authorized by the paired client"))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
     const auto after = read_profiles();
     if (after.current_name != selection.profile_name)
       return ObsConfigurationFailure{ObsConfigurationFailureCode::verification_failed,
@@ -207,7 +230,11 @@ ObsConfigurationService::select_scene_collection(const Device& device,
   std::lock_guard operation_lock(operation_mutex_);
   try
   {
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
     const auto before = read_scene_collections();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
     if (!contains_name(before.names, selection.scene_collection_name))
       return ObsConfigurationFailure{ObsConfigurationFailureCode::scene_collection_not_found,
                                      before.current_name};
@@ -218,14 +245,20 @@ ObsConfigurationService::select_scene_collection(const Device& device,
       return ObsConfigurationFailure{
           ObsConfigurationFailureCode::scene_collection_precondition_failed, before.current_name};
     }
-    if (live_output_active())
+    const auto output_active = live_output_active();
+    if (!has_current_control_authority(audit_, device))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
+    if (output_active)
       return ObsConfigurationFailure{ObsConfigurationFailureCode::live_output_active,
                                      before.current_name};
 
-    obs_.request("SetCurrentSceneCollection",
-                 {{"sceneCollectionName", selection.scene_collection_name}},
-                 std::source_location::current(),
-                 "select the scene collection authorized by the paired client");
+    if (!obs_.request_authorized(
+            "SetCurrentSceneCollection",
+            {{"sceneCollectionName", selection.scene_collection_name}},
+            [&] { return has_current_control_authority(audit_, device); },
+            std::source_location::current(),
+            "select the scene collection authorized by the paired client"))
+      return ObsConfigurationFailure{ObsConfigurationFailureCode::operator_role_required};
     const auto after = read_scene_collections();
     if (after.current_name != selection.scene_collection_name)
       return ObsConfigurationFailure{ObsConfigurationFailureCode::verification_failed,

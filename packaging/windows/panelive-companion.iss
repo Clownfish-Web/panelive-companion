@@ -525,7 +525,7 @@ begin
       'adapters, or leave all optional adapters unchecked to use Teleprompter alone.',
     False,
     True);
-  ProviderSelectionPage.Add('OBS Studio 28 through 32.x');
+  ProviderSelectionPage.Add('OBS Studio 29.1 through 32.x');
   ProviderSelectionPage.Add('vMix 29');
   ProviderSelectionPage.Add('Streamlabs Desktop 1.21.9 or newer');
   ProviderSelectionPage.Add('PaneLive Teleprompter (required)');

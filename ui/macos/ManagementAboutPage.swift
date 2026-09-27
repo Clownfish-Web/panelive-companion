@@ -6,11 +6,8 @@ struct ManagementAboutPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("About").font(.system(size: 28, weight: .semibold))
-                Text("Build information, licensing, and acknowledgements.")
-                    .foregroundStyle(.secondary)
-            }
+            ManagementPageHeading(title: "About",
+                subtitle: "Build information, licensing, and acknowledgements.")
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     productCard

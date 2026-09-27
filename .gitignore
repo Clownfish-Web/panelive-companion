@@ -1,4 +1,11 @@
 # Downloaded tools, dependencies, builds and release binaries
+# Internal development material is never part of the public source distribution.
+/_doc/
+/AGENTS.md
+/tests/
+/obs-plugin/tests/
+/app/diagnostics_cli/
+/tools/release/
 /.buildtools/
 /out/
 /build/

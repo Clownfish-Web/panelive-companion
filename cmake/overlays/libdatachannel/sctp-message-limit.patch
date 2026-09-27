@@ -1,0 +1,24 @@
+--- a/src/impl/sctptransport.cpp
++++ b/src/impl/sctptransport.cpp
+@@ -515,11 +515,17 @@
+ 
+ 			} else {
+ 				// SCTP message
++				// Reject before growth. Truncation can turn an invalid application message
++				// into a valid prefix and must never reach the receive callback.
++				if (size_t(len) > mMaxMessageSize - mPartialMessage.size()) {
++					PLOG_WARNING << "SCTP message exceeds the receive limit";
++					binary{}.swap(mPartialMessage);
++					changeState(State::Failed);
++					mWrittenCondition.notify_all();
++					recv(nullptr);
++					return;
++				}
+ 				mPartialMessage.insert(mPartialMessage.end(), buffer, buffer + len);
+-				if (mPartialMessage.size() > mMaxMessageSize) {
+-					PLOG_WARNING << "SCTP message is too large, truncating it";
+-					mPartialMessage.resize(mMaxMessageSize);
+-				}
+ 
+ 				if (flags & MSG_EOR) {
+ 					// Message is complete, process it

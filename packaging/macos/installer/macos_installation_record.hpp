@@ -27,7 +27,7 @@ public:
 };
 
 /// Called after successful payload placement, with the selected original-user install locations.
-/// Writes machine metadata only; does not install payloads, change runtime settings or acquire
+/// Writes current-user metadata only; does not install payloads, change runtime settings or acquire
 /// rights.
 void write_installation_record(const InstallationRecord& record);
 

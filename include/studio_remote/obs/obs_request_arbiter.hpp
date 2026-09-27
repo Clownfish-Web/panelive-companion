@@ -18,6 +18,13 @@ class IObsRequestExecutor
 {
 public:
   virtual ~IObsRequestExecutor() = default;
+  virtual std::optional<json>
+  request_authorized(ObsRequestLane lane,
+                     std::string_view type,
+                     json data,
+                     const std::function<bool()>& authorized,
+                     std::source_location caller = std::source_location::current(),
+                     std::string_view reason = {}) = 0;
   virtual json request(ObsRequestLane lane,
                        std::string_view type,
                        json data = {},
@@ -35,6 +42,14 @@ class ObsRequestArbiter final : public IObsRequestExecutor
 public:
   explicit ObsRequestArbiter(IObsAdapter& obs);
 
+  std::optional<json>
+  request_authorized(ObsRequestLane lane,
+                     std::string_view type,
+                     json data,
+                     const std::function<bool()>& authorized,
+                     std::source_location caller = std::source_location::current(),
+                     std::string_view reason = {}) override;
+
   json request(ObsRequestLane lane,
                std::string_view type,
                json data = {},
@@ -48,12 +63,13 @@ public:
   bool critical_ready() const;
 
 private:
-  json request_impl(ObsRequestLane lane,
-                    std::string_view type,
-                    json data,
-                    std::source_location caller,
-                    std::string_view reason,
-                    bool current);
+  std::optional<json> request_impl(ObsRequestLane lane,
+                                   std::string_view type,
+                                   json data,
+                                   std::source_location caller,
+                                   std::string_view reason,
+                                   bool current,
+                                   const std::function<bool()>& authorized);
 
   IObsAdapter& obs_;
   mutable std::mutex mutex_;
@@ -70,6 +86,12 @@ public:
   void start() override;
   void stop() override;
   bool connected() const override;
+  std::optional<json>
+  request_authorized(std::string_view type,
+                     json data,
+                     const std::function<bool()>& authorized,
+                     std::source_location caller = std::source_location::current(),
+                     std::string_view reason = {}) override;
   json request(std::string_view type,
                json data = {},
                std::source_location caller = std::source_location::current(),

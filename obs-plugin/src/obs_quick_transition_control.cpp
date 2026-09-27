@@ -15,7 +15,7 @@
 
 #include <algorithm>
 #include <charconv>
-#include <cstring>
+#include <cstdio>
 #include <memory>
 #include <optional>
 #include <string>
@@ -275,7 +275,7 @@ void ObsQuickTransitionControl::publish_catalog()
     if (const auto duration = configured_durations_.find(source.transition_id);
         duration != configured_durations_.end())
       target.duration_ms = duration->second;
-    std::strncpy(target.label.data(), source.label.c_str(), target.label.size() - 1);
+    std::snprintf(target.label.data(), target.label.size(), "%s", source.label.c_str());
   }
 
   catalog_sequence_ = sequence + 1;
@@ -296,11 +296,12 @@ void ObsQuickTransitionControl::publish_catalog()
       continue;
 
     const auto& source = hotkey_snapshot.entries[index];
-    std::strncpy(target.identifier.data(), source.identifier.c_str(), target.identifier.size() - 1);
-    std::strncpy(target.label.data(), source.label.c_str(), target.label.size() - 1);
-    std::strncpy(target.key_identifier.data(),
-                 source.key_identifier.c_str(),
-                 target.key_identifier.size() - 1);
+    std::snprintf(target.identifier.data(), target.identifier.size(), "%s", source.identifier.c_str());
+    std::snprintf(target.label.data(), target.label.size(), "%s", source.label.c_str());
+    std::snprintf(target.key_identifier.data(),
+                  target.key_identifier.size(),
+                  "%s",
+                  source.key_identifier.c_str());
     target.modifiers = source.modifiers;
   }
 

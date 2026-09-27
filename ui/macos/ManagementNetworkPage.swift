@@ -18,11 +18,8 @@ struct ManagementNetworkPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Companion Settings").font(.system(size: 28, weight: .semibold))
-                Text("Configure the HTTPS/WSS listener and pairing address.")
-                    .foregroundStyle(.secondary)
-            }
+            ManagementPageHeading(title: "Companion Settings",
+                subtitle: "Configure the HTTPS/WSS listener and pairing address.")
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {

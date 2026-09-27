@@ -1,0 +1,195 @@
+--- a/src/civetweb.c
++++ b/src/civetweb.c
+@@ -10762,12 +10762,24 @@
+ }
+ 
+ 
++/* RFC 9110 field-name token grammar, independent of locale. */
++static int
++is_http_field_name_char(unsigned char c)
++{
++	return ((c >= 'A') && (c <= 'Z')) || ((c >= 'a') && (c <= 'z'))
++	       || ((c >= '0') && (c <= '9'))
++	       || ((c != 0) && (strchr("!#$%&'*+-.^_`|~", c) != NULL));
++}
++
++
+ /* Parse HTTP headers from the given buffer, advance buf pointer
+  * to the point where parsing stopped.
+  * All parameters must be valid pointers (not NULL).
+  * Return <0 on error. */
+ static int
+-parse_http_headers(char **buf, struct mg_header hdr[MG_MAX_HEADERS])
++parse_http_headers(char **buf,
++                   struct mg_header hdr[MG_MAX_HEADERS],
++                   int strict_request)
+ {
+ 	int i;
+ 	int num_headers = 0;
+@@ -10777,11 +10789,21 @@
+ 
+ 		/* Skip all ASCII characters (>SPACE, <127), to find a ':' */
+ 		while ((*dp != ':') && (*dp >= 33) && (*dp <= 126)) {
++			if (strict_request && !is_http_field_name_char((unsigned char)*dp)) {
++				return -1;
++			}
+ 			dp++;
+ 		}
+ 		if (dp == *buf) {
+-			/* End of headers reached. */
++			/* A folded line or empty field name is not the end of headers. */
++			if (strict_request && (*dp != 0) && (*dp != '\r') && (*dp != '\n')) {
++				return -1;
++			}
+ 			break;
++		}
++		if (strict_request && (*dp != ':')) {
++			/* Whitespace before the colon must not be normalized away. */
++			return -1;
+ 		}
+ 
+ 		/* Drop all spaces after header name before : */
+@@ -10839,6 +10861,10 @@
+ 			*buf = dp;
+ 			break;
+ 		}
++	}
++	if (strict_request && (**buf != 0) && (**buf != '\r') && (**buf != '\n')) {
++		/* Do not silently discard fields beyond MG_MAX_HEADERS. */
++		return -1;
+ 	}
+ 	return num_headers;
+ }
+@@ -11032,7 +11058,7 @@
+ 	}
+ 
+ 	/* Parse all HTTP headers */
+-	ri->num_headers = parse_http_headers(&buf, ri->http_headers);
++	ri->num_headers = parse_http_headers(&buf, ri->http_headers, 1);
+ 	if (ri->num_headers < 0) {
+ 		/* Error while parsing headers */
+ 		return -1;
+@@ -11133,7 +11159,7 @@
+ 	} while (isspace((unsigned char)*buf));
+ 
+ 	/* Parse all HTTP headers */
+-	ri->num_headers = parse_http_headers(&buf, ri->http_headers);
++	ri->num_headers = parse_http_headers(&buf, ri->http_headers, 0);
+ 	if (ri->num_headers < 0) {
+ 		/* Error while parsing headers */
+ 		return -1;
+@@ -11882,7 +11908,7 @@
+ 
+ 	pbuf = buf;
+ 	buf[headers_len - 1] = '\0';
+-	ri.num_headers = parse_http_headers(&pbuf, ri.http_headers);
++	ri.num_headers = parse_http_headers(&pbuf, ri.http_headers, 0);
+ 
+ 	/* Make up and send the status line */
+ 	status_text = "OK";
+@@ -18791,6 +18817,24 @@
+ }
+ 
+ 
++/* Reject ambiguous request framing before selecting a body reader or handler. */
++static int
++has_unambiguous_request_headers(const struct mg_request_info *ri)
++{
++	int host_count = 0, length_count = 0, transfer_count = 0;
++	int i;
++	for (i = 0; i < ri->num_headers; i++) {
++		const char *name = ri->http_headers[i].name;
++		host_count += !mg_strcasecmp(name, "Host");
++		length_count += !mg_strcasecmp(name, "Content-Length");
++		transfer_count += !mg_strcasecmp(name, "Transfer-Encoding");
++	}
++	return (host_count <= 1) && (length_count <= 1) && (transfer_count <= 1)
++	       && !(length_count && transfer_count)
++	       && (strcmp(ri->http_version, "1.1") || (host_count == 1));
++}
++
++
+ static int
+ get_request(struct mg_connection *conn, char *ebuf, size_t ebuf_len, int *err)
+ {
+@@ -18803,8 +18847,9 @@
+ 		return 0;
+ 	}
+ 
+-	if (parse_http_request(conn->buf, conn->buf_size, &conn->request_info)
+-	    <= 0) {
++	if ((parse_http_request(conn->buf, conn->buf_size, &conn->request_info)
++	     <= 0)
++	    || !has_unambiguous_request_headers(&conn->request_info)) {
+ 		mg_snprintf(conn,
+ 		            NULL, /* No truncation check for ebuf */
+ 		            ebuf,
+@@ -18840,9 +18885,9 @@
+ 	if (((cl = get_header(conn->request_info.http_headers,
+ 	                      conn->request_info.num_headers,
+ 	                      "Transfer-Encoding"))
+-	     != NULL)
+-	    && mg_strcasecmp(cl, "identity")) {
+-		if (mg_strcasecmp(cl, "chunked")) {
++	     != NULL)) {
++		if (mg_strcasecmp(cl, "chunked")
++		    || !strcmp(conn->request_info.http_version, "1.0")) {
+ 			mg_snprintf(conn,
+ 			            NULL, /* No truncation check for ebuf */
+ 			            ebuf,
+@@ -18860,15 +18905,20 @@
+ 	           != NULL) {
+ 		/* Request has content length set */
+ 		char *endptr = NULL;
++		errno = 0;
+ 		conn->content_len = strtoll(cl, &endptr, 10);
+-		if ((endptr == cl) || (conn->content_len < 0)) {
++		while ((*endptr == ' ') || (*endptr == '\t')) {
++			endptr++;
++		}
++		if ((*cl < '0') || (*cl > '9') || *endptr || (errno == ERANGE)
++		    || (conn->content_len < 0)) {
+ 			mg_snprintf(conn,
+ 			            NULL, /* No truncation check for ebuf */
+ 			            ebuf,
+ 			            ebuf_len,
+ 			            "%s",
+ 			            "Bad request");
+-			*err = 411;
++			*err = 400;
+ 			return 0;
+ 		}
+ 		/* Publish the content length back to the request info. */
+--- a/src/response.inl
++++ b/src/response.inl
+@@ -200,7 +200,9 @@
+ 
+ 
+ /* forward */
+-static int parse_http_headers(char **buf, struct mg_header hdr[MG_MAX_HEADERS]);
++static int parse_http_headers(char **buf,
++                              struct mg_header hdr[MG_MAX_HEADERS],
++                              int strict_request);
+ 
+ 
+ /* Add a complete header string (key + value).
+@@ -233,7 +235,7 @@
+ 
+ 	/* Call existing method to split header buffer */
+ 	parse = workbuffer;
+-	num_hdr = parse_http_headers(&parse, add_hdr);
++	num_hdr = parse_http_headers(&parse, add_hdr, 0);
+ 	ret = num_hdr;
+ 
+ 	for (i = 0; i < num_hdr; i++) {
+--- a/src/handle_form.inl
++++ b/src/handle_form.inl
+@@ -746,7 +746,7 @@
+ 			}
+ 
+ 			part_header.num_headers =
+-			    parse_http_headers(&hbuf, part_header.http_headers);
++			    parse_http_headers(&hbuf, part_header.http_headers, 0);
+ 			if ((hend + 2) != hbuf) {
+ 				/* Malformed request */
+ 				mg_free(boundary);

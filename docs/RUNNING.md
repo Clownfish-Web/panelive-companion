@@ -83,8 +83,11 @@ launch defaults to **7443**. Only one Windows Companion process may run at a tim
 
 ## macOS
 
-For a published PKG, follow its installer prompts. For a local build, close OBS and
-install the helper from the staged package as your normal user:
+For a published PKG, follow its installer prompts. Setup places the application in
+`/Applications` and updates the shared OBS helper with one administrator approval.
+Settings, credentials and paired clients remain per user. For a local build, stage
+the integration bundle described in [BUILDING.md](BUILDING.md#macos-arm64-or-x86_64),
+then close OBS and install the helper as your normal user:
 
 ```sh
 package="$PWD/out/package/panelive-companion-0.1.0-beta.1-macos-arm64-custom"
@@ -93,7 +96,10 @@ open "$package/panelive-companion.app" --args --open-management
 ```
 
 For Intel, use your x86_64 package directory. The helper installs to
-`~/Library/Application Support/obs-studio/plugins/`. Restart OBS after installation.
+`/Library/Application Support/obs-studio/plugins/`, with a link under your
+`~/Library/Application Support/obs-studio/plugins/` directory. The native integration
+component requests administrator approval when shared files need changing. Remove
+a conflicting old personal helper before installation. Restart OBS afterward.
 See the packaged [helper installation manual](../packaging/macos/INSTALL_OBS_PLUGIN_MACOS.md)
 for details. Keychain and local-network prompts should be handled in your logged-in
 session. A locally built, ad-hoc-signed app is an evaluation artifact; published release

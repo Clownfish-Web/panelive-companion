@@ -8,6 +8,8 @@ final class ManagementShellModel: ObservableObject {
     private let exportReport: (String) -> Void
     @Published private(set) var page: PLManagementPage
     @Published private(set) var revision = 0
+    @Published var clientQuery = ""
+    @Published var selectedClientIdentifier: String?
     @Published var pendingNavigation: PLManagementPage?
     @Published private(set) var pairingPreviewSeconds = 0
     private let pairingPreview = PLPairingPreview()

@@ -1,4 +1,5 @@
 #include "hotkey_service.hpp"
+#include "command_authorization.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -43,12 +44,15 @@ bool HotkeyService::available(const Device& device, HotkeyTarget target) const n
 HotkeyTriggerResult HotkeyService::trigger(const Device& device,
                                            const HotkeyTriggerRequest& request)
 {
-  if (device.role < Role::operator_)
+  if (!has_current_control_authority(audit_, device))
     return {HotkeyTriggerStatus::permission_denied, "operator-role-required"};
 
-  const auto cache_key = device.id + ":" + request.request_id;
+  const auto cache_key = device.production_provider + ":" + device.id + ":" +
+                         std::to_string(device.pairing_generation) + ":" + request.request_id;
   {
     std::lock_guard lock(mutex_);
+    if (!has_current_control_authority(audit_, device))
+      return {HotkeyTriggerStatus::permission_denied, "operator-role-required"};
     prune_locked(Clock::now());
     if (completed_.contains(cache_key))
       return {HotkeyTriggerStatus::already_completed, {}};
@@ -61,6 +65,8 @@ HotkeyTriggerResult HotkeyService::trigger(const Device& device,
                                                    : "production-backend-unavailable"};
   {
     std::lock_guard lock(mutex_);
+    if (!has_current_control_authority(audit_, device))
+      return {HotkeyTriggerStatus::permission_denied, "operator-role-required"};
     if (completed_.contains(cache_key))
       return {HotkeyTriggerStatus::already_completed, {}};
     if (in_progress_.contains(cache_key))

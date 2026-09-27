@@ -18,6 +18,8 @@ public:
   CaptureLifecycle(StartAction start_action, StopAction stop_action, StateHandler state_handler);
 
   void reconcile(bool demanded, std::uint64_t demand_generation);
+  // Track demand changes stop/recreate capture without invalidating client media sessions.
+  void reconfigure_tracks();
   void begin_capture_reload();
   void complete_capture_reload(bool demanded, std::uint64_t demand_generation);
   bool consume_capture_generation_reset() noexcept;

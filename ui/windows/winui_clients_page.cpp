@@ -122,12 +122,10 @@ controls::Button teleprompter_action(const ManagementClientRow& client)
 
 controls::Button remote_tally_action(WinUiPageContext context, const ManagementClientRow& client)
 {
-  const bool allowed = client.remote_tally_allowed.value_or(false);
+  const bool allowed = client.remote_tally_allowed.value();
   const auto title = allowed ? L"Withdraw web tally permission" : L"Allow web tallies";
-  auto button = action_button(
-      L'\xE774', client.remote_tally_allowed ? title : L"Web tally permission unavailable");
+  auto button = action_button(L'\xE774', title);
   button.Name(L"RemoteTallyPermissionButton");
-  button.IsEnabled(client.remote_tally_allowed.has_value());
   if (allowed)
     button.Foreground(xaml::Media::SolidColorBrush(winrt::Windows::UI::Color{255, 87, 214, 141}));
   button.Click(
@@ -365,7 +363,7 @@ xaml::FrameworkElement make_clients_page(WinUiPageContext context)
           context.redraw();
         });
     actions.Children().Append(teleprompter_button);
-    if (client.production_provider == "obs")
+    if (client.production_provider == "obs" && client.remote_tally_allowed.has_value())
       actions.Children().Append(remote_tally_action(context, client));
     actions.Children().Append(forget_button);
     controls::Grid::SetColumn(actions, 5);

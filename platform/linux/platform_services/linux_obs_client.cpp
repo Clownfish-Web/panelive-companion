@@ -5,33 +5,15 @@
 #include "linux_obs_quick_transition_catalog.hpp"
 
 #include <algorithm>
-#include <array>
-#include <openssl/evp.h>
-#include <studio_remote/obs/obs_event_subscriptions.hpp>
+#include <studio_remote/obs/obs_rpc_request_exchange.hpp>
+#include <studio_remote/obs/obs_wire_protocol.hpp>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 namespace studio_remote::linux
 {
 namespace
 {
-std::string standard_base64(std::span<const unsigned char> value)
-{
-  std::string result(4 * ((value.size() + 2) / 3), '\0');
-  const auto length = EVP_EncodeBlock(reinterpret_cast<unsigned char*>(result.data()),
-                                      value.data(),
-                                      static_cast<int>(value.size()));
-  result.resize(static_cast<std::size_t>(length));
-  return result;
-}
-
-std::string sha256_base64(std::string_view value)
-{
-  std::array<unsigned char, 32> digest{};
-  unsigned int length = 0;
-  if (EVP_Digest(value.data(), value.size(), digest.data(), &length, EVP_sha256(), nullptr) != 1)
-    throw std::runtime_error("Could not calculate OBS authentication digest");
-  return standard_base64(std::span(digest.data(), length));
-}
-
 std::string obs_key_id(const HotkeyKey& key)
 {
   if (key.kind == HotkeyKeyKind::letter || key.kind == HotkeyKeyKind::digit ||
@@ -164,8 +146,7 @@ void ObsClient::on_connection(ConnectionCallback handler)
 
 void ObsClient::on_diagnostic_event(DiagnosticEventHandler handler)
 {
-  std::lock_guard lock(mutex_);
-  diagnostic_event_handler_ = std::move(handler);
+  diagnostics_.on_event(std::move(handler));
 }
 
 void ObsClient::run()
@@ -189,7 +170,7 @@ void ObsClient::run()
               break;
             continue;
           }
-          dispatch(json::parse(*message));
+          dispatch(*message);
         }
       }
     }
@@ -199,22 +180,7 @@ void ObsClient::run()
     }
     const bool was_connected = connected_.exchange(false);
     close_socket();
-    {
-      std::lock_guard lock(pending_mutex_);
-      for (auto& [request_id, promise] : pending_)
-      {
-        static_cast<void>(request_id);
-        try
-        {
-          throw std::runtime_error("OBS connection lost");
-        }
-        catch (...)
-        {
-          promise.set_exception(std::current_exception());
-        }
-      }
-      pending_.clear();
-    }
+    pending_.cancel_all(std::make_exception_ptr(std::runtime_error("OBS connection lost")));
     ConnectionCallback connection_handler;
     {
       std::lock_guard lock(mutex_);
@@ -300,17 +266,13 @@ bool ObsClient::connect_once(std::uint64_t configuration_revision)
   const auto hello_text = receive_message(std::chrono::seconds(6));
   if (!hello_text)
     throw std::runtime_error("OBS closed before Hello");
-  const auto hello = json::parse(*hello_text);
-  if (hello.value("op", -1) != 0)
-    throw std::runtime_error("OBS sent an invalid Hello");
-  json identify = {{"rpcVersion", 1}, {"eventSubscriptions", gateway_obs_event_subscriptions}};
-  if (hello.at("d").contains("authentication"))
-    identify["authentication"] = authentication(hello.at("d").at("authentication"), password);
-  if (!send_message(json({{"op", 1}, {"d", identify}}).dump()))
+  const auto hello = parse_obs_hello(*hello_text, password);
+  if (!send_message(hello.identify_message))
     throw std::runtime_error("Could not send OBS Identify");
   const auto identified_text = receive_message(std::chrono::seconds(6));
-  if (!identified_text || json::parse(*identified_text).value("op", -1) != 2)
-    throw std::runtime_error("OBS rejected the connection during Identify");
+  if (!identified_text)
+    throw std::runtime_error("OBS rejected or closed during Identify");
+  validate_obs_identified(*identified_text);
   if (configuration_revision_.load(std::memory_order_acquire) != configuration_revision)
     return false;
   connected_ = true;
@@ -321,7 +283,7 @@ bool ObsClient::connect_once(std::uint64_t configuration_revision)
     connection_handler = connection_handler_;
   }
   if (connection_handler)
-    connection_handler(true, hello.at("d").value("obsWebSocketVersion", ""));
+    connection_handler(true, hello.version);
   return true;
 }
 
@@ -346,14 +308,6 @@ bool ObsClient::send_message(std::string message)
     socket = socket_;
   }
   return socket && socket->isOpen() && socket->send(std::move(message));
-}
-
-std::string ObsClient::authentication(const json& data, std::string_view password) const
-{
-  if (password.empty())
-    throw std::runtime_error("OBS requires a password");
-  const auto secret = sha256_base64(std::string(password) + data.value("salt", ""));
-  return sha256_base64(secret + data.value("challenge", ""));
 }
 
 json ObsClient::request(std::string_view type,
@@ -423,36 +377,25 @@ json ObsClient::request(std::string_view type,
       data = json::object();
     }
   }
+  if (pending_.full())
+    throw std::runtime_error("OBS request queue is full");
   const auto request_id = crypto::uuid_v4();
-  std::future<json> response;
-  {
-    std::lock_guard lock(pending_mutex_);
-    auto [entry, inserted] = pending_.try_emplace(request_id);
-    if (!inserted)
-      throw std::runtime_error("Duplicate OBS request identifier");
-    response = entry->second.get_future();
-  }
-  emit_diagnostic_event("requestSent",
-                        {{"requestType", type},
-                         {"requestId", request_id},
-                         {"reason", reason},
-                         {"caller", caller.function_name()}});
-  const json envelope = {
-      {"op", 6},
-      {"d", {{"requestType", type}, {"requestId", request_id}, {"requestData", std::move(data)}}}};
-  if (!send_message(envelope.dump()))
-  {
-    std::lock_guard lock(pending_mutex_);
-    pending_.erase(request_id);
-    throw std::runtime_error("Could not send OBS request");
-  }
-  if (response.wait_for(std::chrono::seconds(8)) != std::future_status::ready)
-  {
-    std::lock_guard lock(pending_mutex_);
-    pending_.erase(request_id);
-    throw std::runtime_error("OBS request timed out");
-  }
-  auto result = response.get();
+  const auto started = monotonic_ns();
+  const ObsRpcRequestOperations operations{
+      [this](std::string_view id) { return pending_.register_request(std::string(id)); },
+      [this](std::string_view request_type, std::string_view id, json request_data)
+      { return send_message(make_obs_request(request_type, id, std::move(request_data))); },
+      [started] { return (monotonic_ns() - started) / 1'000'000ULL; }};
+  auto result = exchange_obs_rpc_request(pending_,
+                                         {type,
+                                          request_id,
+                                          std::move(data),
+                                          std::chrono::seconds(8),
+                                          caller,
+                                          reason,
+                                          static_cast<std::uint64_t>(syscall(SYS_gettid))},
+                                         operations,
+                                         &diagnostics_);
   if (type == "GetSceneTransitionList")
   {
     const auto websocket_catalog = result.value("transitions", json::array());
@@ -483,43 +426,23 @@ json ObsClient::request(std::string_view type,
   return result;
 }
 
-void ObsClient::dispatch(const json& message)
+void ObsClient::dispatch(std::string_view wire_message)
 {
-  const auto opcode = message.value("op", -1);
-  const auto data = message.value("d", json::object());
-  if (opcode == 5)
+  auto message = parse_obs_message(wire_message, pending_);
+  if (auto* event = std::get_if<ObsWireEvent>(&message))
   {
+    diagnostics_.event_received(
+        event->type, event->data, static_cast<std::uint64_t>(syscall(SYS_gettid)));
     EventCallback event_handler;
     {
       std::lock_guard lock(mutex_);
       event_handler = event_handler_;
     }
     if (event_handler)
-      event_handler(
-          {data.value("eventType", ""), data.value("eventData", json::object()), monotonic_ns()});
+      event_handler({event->type, event->data, monotonic_ns()});
   }
-  if (opcode != 7)
-    return;
-  const auto request_id = data.value("requestId", "");
-  std::lock_guard lock(pending_mutex_);
-  const auto entry = pending_.find(request_id);
-  if (entry == pending_.end())
-    return;
-  const auto status = data.value("requestStatus", json::object());
-  if (status.value("result", false))
-    entry->second.set_value(data.value("responseData", json::object()));
-  else
-  {
-    try
-    {
-      throw std::runtime_error(status.value("comment", "OBS request failed"));
-    }
-    catch (...)
-    {
-      entry->second.set_exception(std::current_exception());
-    }
-  }
-  pending_.erase(entry);
+  if (auto* response = std::get_if<ObsWireResponse>(&message))
+    complete_obs_response(pending_, std::move(*response));
 }
 
 void ObsClient::trigger_hotkey(const ProductionHotkeyTrigger& trigger)
@@ -592,14 +515,4 @@ void ObsClient::set_error(std::string message)
   last_error_ = std::move(message);
 }
 
-void ObsClient::emit_diagnostic_event(std::string_view event, json details) const
-{
-  DiagnosticEventHandler handler;
-  {
-    std::lock_guard lock(mutex_);
-    handler = diagnostic_event_handler_;
-  }
-  if (handler)
-    handler(event, std::move(details));
-}
 } // namespace studio_remote::linux

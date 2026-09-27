@@ -21,6 +21,8 @@ function(panelive_scan_dependencies binary result)
 endfunction()
 panelive_scan_dependencies("@CMAKE_CURRENT_BINARY_DIR@/panelive-companion"
   CPACK_DEBIAN_PACKAGE_DEPENDS)
+# The SVG loader is loaded at runtime and is invisible to dpkg-shlibdeps.
+string(APPEND CPACK_DEBIAN_PACKAGE_DEPENDS ", librsvg2-common")
 panelive_scan_dependencies("@CMAKE_CURRENT_BINARY_DIR@/obs-plugin/panelive-companion-obs-plugin.so"
   helper_dependencies)
 # Retain the actual helper library requirements as optional integration metadata.

@@ -12,11 +12,11 @@ WindowsVideoCaptureDemand::open(std::optional<std::uint32_t> expected_producer)
 {
   WindowsVideoCaptureDemand result;
   constexpr DWORD access = FILE_MAP_READ | FILE_MAP_WRITE;
-  result.handle_ = OpenFileMappingW(access, FALSE, ipc::video_capture_control_mapping_name);
+  result.handle_ = open_owner_restricted_mapping(access, ipc::video_capture_control_mapping_name);
   if (!result.handle_)
     return std::nullopt;
   result.mapping_ = static_cast<ipc::VideoCaptureControlMapping*>(
-      MapViewOfFile(result.handle_, access, 0, 0, sizeof(ipc::VideoCaptureControlMapping)));
+      MapViewOfFile(result.handle_.get(), access, 0, 0, sizeof(ipc::VideoCaptureControlMapping)));
   if (!result.mapping_)
     return std::nullopt;
   result.publisher_ = ipc::VideoCaptureDemandPublisher::open(*result.mapping_, expected_producer);
@@ -26,8 +26,7 @@ WindowsVideoCaptureDemand::open(std::optional<std::uint32_t> expected_producer)
 }
 
 WindowsVideoCaptureDemand::WindowsVideoCaptureDemand(WindowsVideoCaptureDemand&& other) noexcept
-    : handle_(std::exchange(other.handle_, nullptr)),
-      mapping_(std::exchange(other.mapping_, nullptr)),
+    : handle_(std::move(other.handle_)), mapping_(std::exchange(other.mapping_, nullptr)),
       publisher_(std::exchange(other.publisher_, std::nullopt))
 {
 }
@@ -38,8 +37,6 @@ WindowsVideoCaptureDemand::~WindowsVideoCaptureDemand()
     publisher_->publish_idle(*mapping_, monotonic_ns());
   if (mapping_ && !UnmapViewOfFile(mapping_))
     OutputDebugStringW(L"Could not unmap OBS video capture control\n");
-  if (handle_ && !CloseHandle(handle_))
-    OutputDebugStringW(L"Could not close OBS video capture control\n");
 }
 
 bool WindowsVideoCaptureDemand::publish(VideoDemand demand, std::uint64_t now_ns)

@@ -91,15 +91,15 @@ void GatewayHttpServer::deliver_tally_request(mg_connection* connection,
                                               const Device& device,
                                               HttpRequestMethod method)
 {
+  if (!remote_tallies_)
+  {
+    reply(connection, 404, {{"error", "remote-tally-unsupported"}});
+    return;
+  }
   if (device.production_provider != "obs")
   {
     reply(
         connection, 422, {{"error", "remote-tally-rejected"}, {"reason", "provider-unsupported"}});
-    return;
-  }
-  if (!remote_tallies_)
-  {
-    reply(connection, 503, {{"error", "remote-tally-unavailable"}});
     return;
   }
   const auto route = tally_route(uri(connection));

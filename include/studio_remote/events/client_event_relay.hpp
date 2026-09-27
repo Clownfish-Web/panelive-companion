@@ -10,6 +10,7 @@
 #include <string_view>
 #include <studio_remote/events/client_delivery_queue.hpp>
 #include <studio_remote/media/fixed_spsc_ring.hpp>
+#include <studio_remote/transport/client_frame_budget.hpp>
 #include <thread>
 #include <vector>
 
@@ -71,6 +72,8 @@ class ClientEventConnection
 {
 public:
   using Clock = std::chrono::steady_clock;
+  /// Native receive thread only, before frame routing or JSON decoding. No shared locks.
+  bool admit_frame(std::size_t payload_bytes, Clock::time_point now) noexcept;
   bool submit(ClientEventNotification notification);
   void set_permissions(std::uint32_t permissions) noexcept;
   void revoke() noexcept;
@@ -106,6 +109,7 @@ private:
   bool write_message(std::string_view message);
   void enqueue(std::string_view message, Clock::time_point now);
   ClientEventOrigin origin_;
+  ClientFrameBudget frame_budget_;
   std::atomic<std::uint32_t> permissions_;
   std::atomic<bool> active_{true};
   std::atomic<bool> ready_{false};

@@ -31,6 +31,19 @@ public:
                        json data = {},
                        std::source_location caller = std::source_location::current(),
                        std::string_view reason = {}) = 0;
+  // The synchronous call owns the authority predicate until dispatch returns. Adapters that
+  // queue before reaching the provider must carry it through that queue and recheck at dispatch.
+  virtual std::optional<json>
+  request_authorized(std::string_view type,
+                     json data,
+                     const std::function<bool()>& authorized,
+                     std::source_location caller = std::source_location::current(),
+                     std::string_view reason = {})
+  {
+    if (!authorized || !authorized())
+      return std::nullopt;
+    return request(type, std::move(data), caller, reason);
+  }
   virtual json request_current(std::string_view type,
                                json data = {},
                                std::source_location caller = std::source_location::current(),

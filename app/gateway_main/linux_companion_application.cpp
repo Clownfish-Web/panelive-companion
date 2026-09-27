@@ -116,16 +116,17 @@ int LinuxCompanionApplication::run(int argc, char** argv)
       std::cout << PROJECT_VERSION << '\n';
       return 0;
     }
-    if (command_line.open_management && activate_existing_management_ui())
-      return 0;
-
-    ConfigStore config_store(command_line.data_directory);
-    auto config = config_store.load();
+    // Like Windows, desktop registration is independent of gateway identity and activation.
     if (command_line.set_sign_in_startup)
     {
       SignInStartup().set_enabled(*command_line.set_sign_in_startup);
       return 0;
     }
+    if (command_line.open_management && activate_existing_management_ui())
+      return 0;
+
+    ConfigStore config_store(command_line.data_directory);
+    auto config = config_store.load();
     SingleInstance single_instance(config.data_directory);
     if (!single_instance.owns_instance())
     {

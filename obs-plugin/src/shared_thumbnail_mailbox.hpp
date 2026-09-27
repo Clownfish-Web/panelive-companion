@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 
 namespace studio_remote::obs_plugin
@@ -33,7 +34,7 @@ public:
   std::optional<ThumbnailRequest> request_after(std::uint64_t sequence) const;
   void publish(std::uint64_t sequence,
                ipc::ThumbnailStatus status,
-               const std::uint8_t* pixels = nullptr,
+               std::span<const std::uint8_t> pixels = {},
                std::uint32_t width = 0,
                std::uint32_t height = 0,
                std::uint32_t stride = 0,

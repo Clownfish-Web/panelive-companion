@@ -28,6 +28,7 @@ private:
   GtkScrolledWindow* body_;
   std::string version_;
   std::map<ManagementPage, Page> forms_;
+  Page clients_page_;
   Page teleprompter_form_;
   std::uint64_t teleprompter_form_generation_ = 0;
   std::optional<teleprompter::SessionAssignment> teleprompter_sharing_selection_;

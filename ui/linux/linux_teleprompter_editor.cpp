@@ -77,6 +77,13 @@ GtkWidget* content_field(LinuxPageContext context, const teleprompter::Draft& dr
 {
   auto* content = gtk_text_view_new();
   gtk_widget_set_name(content, "teleprompter-content");
+  gtk_accessible_update_property(GTK_ACCESSIBLE(content),
+                                 GTK_ACCESSIBLE_PROPERTY_LABEL,
+                                 "Script content",
+                                 GTK_ACCESSIBLE_PROPERTY_DESCRIPTION,
+                                 "Press Ctrl+Tab to move to the next control.",
+                                 -1);
+  gtk_widget_set_tooltip_text(content, "Press Ctrl+Tab to move to the next control.");
   gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(content), GTK_WRAP_WORD_CHAR);
   auto* buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(content));
   gtk_text_buffer_set_text(buffer, draft.content.c_str(), static_cast<int>(draft.content.size()));

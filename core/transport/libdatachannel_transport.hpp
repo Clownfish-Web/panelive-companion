@@ -63,7 +63,9 @@ enum class MediaOfferFailure
   capture_reset,
   hub_stopped,
   transport_closed,
-  capacity_exceeded
+  capacity_exceeded,
+  sdp_limits_exceeded,
+  invalid_sdp
 };
 
 using MediaOfferResult = std::variant<json, MediaOfferFailure>;

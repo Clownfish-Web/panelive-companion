@@ -3,7 +3,7 @@
 #include <studio_remote/ipc/video_capture_demand_publisher.hpp>
 #include <studio_remote/media/video_capture_demand.hpp>
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 #include <cstdint>
 #include <optional>
 
@@ -33,7 +33,7 @@ public:
 
 private:
   WindowsVideoCaptureDemand() = default;
-  HANDLE handle_ = nullptr;
+  IpcMappingHandle handle_;
   ipc::VideoCaptureControlMapping* mapping_ = nullptr;
   std::optional<ipc::VideoCaptureDemandPublisher> publisher_;
 };

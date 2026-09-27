@@ -1,10 +1,6 @@
-#include "../../core/application/tally_publication_service.hpp"
-#include "../../platform/shared/tally/sqlite_publication_repository.hpp"
 #include "../../platform/shared/teleprompter/session_device_source.hpp"
-#include "../../platform/windows/platform_services/windows_tally_health_probe.hpp"
 #include "adapter_gateway_controller.hpp"
 #include "client_approval_callbacks.hpp"
-#include "tally_management_callbacks.hpp"
 #include "device_role_protocol.hpp"
 #include "http_server.hpp"
 #include "listener_gateway_controller.hpp"
@@ -23,7 +19,6 @@
 #include <mutex>
 #include <optional>
 #include <string>
-#include <studio_remote/build/remote_tally_service.hpp>
 #include <studio_remote/configuration/stored_password.hpp>
 #include <studio_remote/credentials/audit_store.hpp>
 #include <studio_remote/credentials/pairing_manager.hpp>
@@ -512,27 +507,6 @@ int run_windows_companion_application(int argc, char** argv)
         &process_log.start(config.data_directory / "endurance-logs", PROJECT_VERSION);
     studio_remote::windows::WindowsCredentialStore credentials(config.data_directory / "secrets");
     studio_remote::AuditStore audit(config.data_directory / "gateway.db", {}, endurance_log);
-    studio_remote::tally::SqlitePublicationRepository tally_repository(
-        config.data_directory / "gateway.db",
-        [&credentials] { return credentials.uuid_v4(); },
-        []
-        {
-          return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                std::chrono::system_clock::now().time_since_epoch())
-                                                .count());
-        });
-    studio_remote::tally::PublicationService tally_publications(
-        tally_repository,
-        credentials,
-        std::string(studio_remote::tally::build::viewer_page_base_url));
-    studio_remote::windows::WindowsTallyHealthProbe tally_health{
-        std::string(studio_remote::tally::build::health_url)};
-    const auto tally_health_result = tally_health.probe({});
-    tally_publications.health_changed(tally_health_result);
-    endurance_log->record(
-        "remoteTally",
-        "startupHealthChecked",
-        {{"healthy", tally_health_result == studio_remote::tally::ServiceHealth::healthy}});
     studio_remote::teleprompter::SqliteRepository teleprompter(
         config.data_directory / "gateway.db",
         studio_remote::teleprompter::session_device_source(audit),
@@ -1039,8 +1013,7 @@ int run_windows_companion_application(int argc, char** argv)
         pairing,
         hotkeys,
         endurance_log,
-        &teleprompter,
-        &tally_publications);
+        &teleprompter);
     publish_provider_capabilities = [&http](std::string_view provider)
     { http.publish_capabilities(provider); };
     media_delivery.on_capabilities_changed([&http] { http.publish_capabilities("obs"); });
@@ -1611,8 +1584,7 @@ int run_windows_companion_application(int argc, char** argv)
           { http.identify_client(device_id, options); },
           [&http](studio_remote::ClientIdentificationOptions options)
           { http.identify_all_clients(options); },
-          studio_remote::make_tally_management_callbacks(
-              tally_repository, tally_publications, [&http] { http.publish_capabilities("obs"); }),
+          studio_remote::RemoteTallyManagementCallbacks{},
           &teleprompter);
       if (open_management)
         management_ui->show_management();

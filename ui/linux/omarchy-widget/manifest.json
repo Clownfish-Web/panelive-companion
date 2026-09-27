@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "panelive-companion",
+  "name": "PaneLive Companion",
+  "version": "0.1.0",
+  "author": "PaneLive",
+  "description": "Live Companion listener, clients, backend and media health",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "Panel.qml"},
+  "barWidget": {
+    "displayName": "PaneLive Companion",
+    "description": "Operational status of the running Companion",
+    "category": "System",
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}

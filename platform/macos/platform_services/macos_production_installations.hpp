@@ -4,7 +4,8 @@
 
 namespace studio_remote::macos
 {
-/// Machine installation metadata, separate from per-user runtime configuration.
+/// Shared application placement and current-user metadata, separate from runtime configuration.
+std::filesystem::path companion_installation_directory();
 std::filesystem::path installation_record_file();
 
 /// Raw installer-selected path. Validate this before display normalization or symlink resolution.

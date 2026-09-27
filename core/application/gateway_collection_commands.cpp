@@ -19,14 +19,16 @@ json GatewayCommandProcessor::select_collection(const Device& device,
                                                 IObsAdapter& provider,
                                                 CriticalLiveControlService& controls)
 {
-  if (device.role < Role::operator_)
+  if (!authorized(device))
     return collection_rejection(selection, "permission-required");
   if (device.production_provider != provider.backend_info().id)
     return collection_rejection(selection, "invalid_production_provider");
 
   std::lock_guard admission(collection_admission_mutex_);
-  const auto key =
-      "collection:" + device.production_provider + ":" + device.id + ":" + selection.request_id;
+  if (!authorized(device))
+    return collection_rejection(selection, "permission-required");
+  const auto key = "collection:" + device.production_provider + ":" + device.id + ":" +
+                   std::to_string(device.pairing_generation) + ":" + selection.request_id;
   if (const auto cached = cached_response(key))
     return *cached;
   const auto snapshot = state_.production_catalogs();
@@ -89,10 +91,14 @@ void GatewayCommandProcessor::run_collection_selection(const QueuedCollectionSel
   {
     if (stopping_ || !operation.provider->connected())
       return fail("production-backend-unavailable");
-    const auto role = audit_.active_device_role(operation.device.id);
-    if (!role || *role < Role::operator_)
+    if (!authorized(operation.device))
       return fail("permission-required");
     const auto catalog = operation.provider->scene_collection_catalog();
+    // Native catalog reads can block while the owning pairing or its authority changes.
+    if (!authorized(operation.device))
+      return fail("permission-required");
+    if (stopping_)
+      return fail("production-backend-unavailable");
     if (!catalog || catalog->selected_id != selection.expected_current_collection_id)
       return fail("collection-changed");
     operation.provider->select_scene_collection(selection.collection_id,

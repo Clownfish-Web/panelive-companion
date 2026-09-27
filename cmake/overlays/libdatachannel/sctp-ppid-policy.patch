@@ -1,0 +1,107 @@
+--- a/src/impl/sctptransport.cpp
++++ b/src/impl/sctptransport.cpp
+@@ -789,68 +789,38 @@
+ void SctpTransport::processData(binary &&data, uint16_t sid, PayloadId ppid) {
+ 	PLOG_VERBOSE << "Process data, size=" << data.size();
+ 
+-	// RFC 8831: The usage of the PPIDs "WebRTC String Partial" and "WebRTC Binary Partial" is
+-	// deprecated. They were used for a PPID-based fragmentation and reassembly of user messages
+-	// belonging to reliable and ordered data channels.
+-	// See https://www.rfc-editor.org/rfc/rfc8831.html#section-6.6
+-	// We handle those PPIDs at reception for compatibility reasons but shall never send them.
++	// RFC 8831 section 6.6 deprecates partial PPIDs. Do not retain compatibility
++	// buffers: they can mix streams and turn malformed input into a valid prefix.
+ 	switch (ppid) {
+ 	case PPID_CONTROL:
+ 		recv(make_message(std::move(data), Message::Control, sid));
+ 		break;
+ 
+-	case PPID_STRING_PARTIAL: // deprecated
+-		mPartialStringData.insert(mPartialStringData.end(), data.begin(), data.end());
+-		mPartialStringData.resize(mMaxMessageSize);
+-		break;
+-
+ 	case PPID_STRING:
+-		if (mPartialStringData.empty()) {
+-			mBytesReceived += data.size();
+-			recv(make_message(std::move(data), Message::String, sid));
+-		} else {
+-			mPartialStringData.insert(mPartialStringData.end(), data.begin(), data.end());
+-			mPartialStringData.resize(mMaxMessageSize);
+-			mBytesReceived += mPartialStringData.size();
+-			auto message = make_message(std::move(mPartialStringData), Message::String, sid);
+-			mPartialStringData.clear();
+-			recv(std::move(message));
+-		}
++		mBytesReceived += data.size();
++		recv(make_message(std::move(data), Message::String, sid));
++		break;
++
++	case PPID_BINARY:
++		mBytesReceived += data.size();
++		recv(make_message(std::move(data), Message::Binary, sid));
+ 		break;
+ 
+ 	case PPID_STRING_EMPTY:
+-		recv(make_message(std::move(mPartialStringData), Message::String, sid));
+-		mPartialStringData.clear();
+-		break;
+-
+-	case PPID_BINARY_PARTIAL: // deprecated
+-		mPartialBinaryData.insert(mPartialBinaryData.end(), data.begin(), data.end());
+-		mPartialBinaryData.resize(mMaxMessageSize);
+-		break;
+-
+-	case PPID_BINARY:
+-		if (mPartialBinaryData.empty()) {
+-			mBytesReceived += data.size();
+-			recv(make_message(std::move(data), Message::Binary, sid));
+-		} else {
+-			mPartialBinaryData.insert(mPartialBinaryData.end(), data.begin(), data.end());
+-			mPartialBinaryData.resize(mMaxMessageSize);
+-			mBytesReceived += mPartialBinaryData.size();
+-			auto message = make_message(std::move(mPartialBinaryData), Message::Binary, sid);
+-			mPartialBinaryData.clear();
+-			recv(std::move(message));
+-		}
++		recv(make_message(0, Message::String, sid));
+ 		break;
+ 
+ 	case PPID_BINARY_EMPTY:
+-		recv(make_message(std::move(mPartialBinaryData), Message::Binary, sid));
+-		mPartialBinaryData.clear();
++		recv(make_message(0, Message::Binary, sid));
+ 		break;
+ 
+ 	default:
+-		// Unknown
++		// Unsupported PPIDs, including deprecated partial messages, close only
++		// their channel. Notify its owner immediately and reset the remote stream.
+ 		COUNTER_UNKNOWN_PPID++;
+-		PLOG_VERBOSE << "Unknown PPID: " << uint32_t(ppid);
++		PLOG_VERBOSE << "Unsupported PPID: " << uint32_t(ppid);
++		closeStream(sid);
++		recv(make_message(0, Message::Reset, sid));
+ 		return;
+ 	}
+ }
+--- a/src/impl/sctptransport.hpp
++++ b/src/impl/sctptransport.hpp
+@@ -66,9 +66,7 @@
+ 	enum PayloadId : uint32_t {
+ 		PPID_CONTROL = 50,
+ 		PPID_STRING = 51,
+-		PPID_BINARY_PARTIAL = 52,
+ 		PPID_BINARY = 53,
+-		PPID_STRING_PARTIAL = 54,
+ 		PPID_STRING_EMPTY = 56,
+ 		PPID_BINARY_EMPTY = 57
+ 	};
+@@ -117,7 +115,6 @@
+ 	std::atomic<bool> mWrittenOnce = false; // same
+ 
+ 	binary mPartialMessage, mPartialNotification;
+-	binary mPartialStringData, mPartialBinaryData;
+ 
+ 	// Stats
+ 	std::atomic<size_t> mBytesSent = 0, mBytesReceived = 0;

@@ -3,17 +3,9 @@
   <title>PaneLive Companion</title>
   <options customize="never" require-scripts="true" hostArchitectures="@MACOS_ARCHITECTURE@"/>
   <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
-  <volume-check script="checkVolume()">
+  <volume-check>
     <allowed-os-versions><os-version min="13.0"/></allowed-os-versions>
   </volume-check>
-  <script><![CDATA[
-    function checkVolume() {
-      if (my.target.mountpoint == "/") return true;
-      my.result.type = "Fatal";
-      my.result.message = "Install Companion on the currently running macOS volume.";
-      return false;
-    }
-  ]]></script>
   <readme file="INSTALL_MACOS.txt" mime-type="text/plain"/>
   <license file="LICENSE" mime-type="text/plain"/>
   <choices-outline><line choice="panelive-companion"/></choices-outline>

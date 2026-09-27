@@ -2,7 +2,7 @@
 
 #include <studio_remote/ipc/scene_item_properties_mapping.hpp>
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -28,16 +28,15 @@ bool valid_color(std::string_view value)
 
 SceneItemPropertiesObservation WindowsSceneItemProperties::read()
 {
-  HANDLE handle = OpenFileMappingW(FILE_MAP_READ, FALSE, ipc::scene_item_properties_mapping_name);
+  const auto handle =
+      open_owner_restricted_mapping(FILE_MAP_READ, ipc::scene_item_properties_mapping_name);
   if (!handle)
     return {};
-  auto* mapping = static_cast<ipc::SceneItemPropertiesMapping*>(
-      MapViewOfFile(handle, FILE_MAP_READ, 0, 0, sizeof(ipc::SceneItemPropertiesMapping)));
-  if (!mapping)
-  {
-    CloseHandle(handle);
+  const IpcMappingView view(
+      MapViewOfFile(handle.get(), FILE_MAP_READ, 0, 0, sizeof(ipc::SceneItemPropertiesMapping)));
+  if (!view)
     return {};
-  }
+  const auto* mapping = static_cast<const ipc::SceneItemPropertiesMapping*>(view.get());
 
   SceneItemPropertiesObservation observation;
   if (mapping->magic == ipc::scene_item_properties_magic &&
@@ -71,8 +70,6 @@ SceneItemPropertiesObservation WindowsSceneItemProperties::read()
       }
     }
   }
-  UnmapViewOfFile(mapping);
-  CloseHandle(handle);
   return observation;
 }
 

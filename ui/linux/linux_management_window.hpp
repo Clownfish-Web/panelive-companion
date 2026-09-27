@@ -8,8 +8,10 @@
 #include <adwaita.h>
 #include <studio_remote/ui/management_controller.hpp>
 
+#include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace studio_remote::linux
 {
@@ -39,6 +41,13 @@ public:
 private:
   void select_page(ManagementPage page);
   void rebuild_navigation();
+  void create_navigation();
+  void update_navigation_width(int width) noexcept;
+  void apply_navigation_layout() noexcept;
+  void observe_window_size() noexcept;
+  void stop_observing_window_size() noexcept;
+  void queue_layout_redraw() noexcept;
+  void cancel_layout_redraw() noexcept;
   void create_content();
   void open_pairing_preview();
   void update_pairing_preview();
@@ -55,8 +64,24 @@ private:
   std::string version_;
   ManagementUiController& controller_;
   ManagementPage current_page_ = ManagementPage::clients;
+  std::string selected_client_id_;
+  std::string client_query_;
   GtkWindow* window_ = nullptr;
   GtkWidget* navigation_ = nullptr;
+  // Borrowed GTK-thread widgets owned by the window; retained across snapshot refreshes.
+  GtkWidget* navigation_scroll_ = nullptr;
+  GtkWidget* navigation_space_ = nullptr;
+  GtkWidget* navigation_toggle_ = nullptr;
+  std::map<ManagementPage, GtkWidget*> navigation_buttons_;
+  std::vector<GtkWidget*> navigation_labels_;
+  bool navigation_expanded_ = true;
+  bool wide_navigation_expanded_ = true;
+  bool narrow_window_ = false;
+  GdkSurface* observed_surface_ = nullptr;
+  gulong surface_layout_handler_ = 0;
+  // GTK-thread-only, at most one pending presentation redraw; no backend polling.
+  guint layout_redraw_source_ = 0;
+  int observed_width_ = 0;
   GtkWidget* content_ = nullptr;
   GtkWidget* pairing_preview_host_ = nullptr;
   GtkWidget* pairing_preview_countdown_ = nullptr;
@@ -67,6 +92,7 @@ private:
   GtkWidget* error_bar_ = nullptr;
   GtkWidget* recovery_card_ = nullptr;
   GtkWidget* recovery_message_ = nullptr;
+  GtkWidget* footer_status_ = nullptr;
   std::unique_ptr<LinuxManagementPagesHost> pages_;
   std::unique_ptr<GtkWindow, IdentificationWindowDeleter> identification_dialog_;
   GtkCheckButton* identification_audible_ = nullptr;

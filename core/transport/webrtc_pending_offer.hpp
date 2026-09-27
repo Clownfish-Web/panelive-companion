@@ -18,6 +18,7 @@ public:
   std::optional<MediaOfferFailure> publish();
 
 private:
+  bool has_device_capacity_locked() const;
   WebRtcHub& hub_;
   std::shared_ptr<Peer> peer_;
   bool registered_ = false;

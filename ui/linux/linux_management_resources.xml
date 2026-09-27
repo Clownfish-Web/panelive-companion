@@ -3,5 +3,21 @@
   <gresource prefix="/com/clownfishweb/PaneLiveCompanion">
     <file alias="icon-32.png">platform/windows/resources/panelive-companion-32.png</file>
     <file alias="icon-128.png">platform/windows/resources/panelive-companion-128.png</file>
+    <file alias="icons/scalable/actions/dispatch-clients-symbolic.svg">ui/linux/icons/dispatch-clients-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-adapters-symbolic.svg">ui/linux/icons/dispatch-adapters-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-teleprompter-symbolic.svg">ui/linux/icons/dispatch-teleprompter-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-settings-symbolic.svg">ui/linux/icons/dispatch-settings-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-status-symbolic.svg">ui/linux/icons/dispatch-status-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-diagnostics-symbolic.svg">ui/linux/icons/dispatch-diagnostics-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-advanced-symbolic.svg">ui/linux/icons/dispatch-advanced-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-about-symbolic.svg">ui/linux/icons/dispatch-about-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-collapse-symbolic.svg">ui/linux/icons/dispatch-collapse-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-expand-symbolic.svg">ui/linux/icons/dispatch-expand-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-tablet-symbolic.svg">ui/linux/icons/dispatch-tablet-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-phone-symbolic.svg">ui/linux/icons/dispatch-phone-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-plus-symbolic.svg">ui/linux/icons/dispatch-plus-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-identify-symbolic.svg">ui/linux/icons/dispatch-identify-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-refresh-symbolic.svg">ui/linux/icons/dispatch-refresh-symbolic.svg</file>
+    <file alias="icons/scalable/actions/dispatch-forget-symbolic.svg">ui/linux/icons/dispatch-forget-symbolic.svg</file>
   </gresource>
 </gresources>

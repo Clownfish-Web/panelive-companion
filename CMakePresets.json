@@ -118,6 +118,16 @@
       }
     },
     {
+      "name": "omarchy-x64-release",
+      "inherits": "linux-x64-release",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "/usr",
+        "CMAKE_INSTALL_LIBDIR": "lib",
+        "STUDIO_REMOTE_LINUX_DISTRIBUTION": "ARCH",
+        "OBS_PLUGIN_LINUX_INSTALL_DIR": "lib/obs-plugins"
+      }
+    },
+    {
       "name": "linux-x64-asan",
       "inherits": "linux-x64-debug",
       "cacheVariables": {
@@ -161,6 +171,10 @@
     {
       "name": "linux-x64-release",
       "configurePreset": "linux-x64-release"
+    },
+    {
+      "name": "omarchy-x64-release",
+      "configurePreset": "omarchy-x64-release"
     },
     {
       "name": "linux-x64-asan",

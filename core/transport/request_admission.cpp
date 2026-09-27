@@ -90,7 +90,9 @@ RequestAllowance request_allowance(RequestScope scope)
   case RequestScope::authentication:
     return {2, 20, RequestConcurrencyPool::unrestricted};
   case RequestScope::websocket:
-    return {2, 10, RequestConcurrencyPool::unrestricted};
+    return {2, 10, RequestConcurrencyPool::websocket};
+  case RequestScope::websocket_resync:
+    return {1, 2, RequestConcurrencyPool::unrestricted};
   case RequestScope::critical_control:
     return {20, 40, RequestConcurrencyPool::unrestricted};
   case RequestScope::control:
@@ -135,6 +137,8 @@ std::string_view request_scope_name(RequestScope scope)
     return "authentication";
   case RequestScope::websocket:
     return "websocket";
+  case RequestScope::websocket_resync:
+    return "websocket-resync";
   case RequestScope::critical_control:
     return "critical-controls";
   case RequestScope::control:
@@ -210,11 +214,14 @@ RequestAdmission::Result RequestAdmission::admit_device(std::string_view provide
   if (!principal)
     return {capacity_retry_ms, {}};
   const auto pool_index = static_cast<std::size_t>(allowance.pool);
-  const auto global_limit = allowance.pool == RequestConcurrencyPool::teleprompter
-                                ? maximum_teleprompter_requests
-                                : maximum_background_requests;
+  const auto global_limit =
+      allowance.pool == RequestConcurrencyPool::teleprompter ? maximum_teleprompter_requests
+      : allowance.pool == RequestConcurrencyPool::websocket  ? maximum_websocket_connections
+                                                             : maximum_background_requests;
   const auto device_limit = allowance.pool == RequestConcurrencyPool::teleprompter
                                 ? maximum_teleprompter_requests_per_device
+                            : allowance.pool == RequestConcurrencyPool::websocket
+                                ? maximum_websocket_connections_per_device
                                 : maximum_background_requests_per_device;
   if (allowance.pool != RequestConcurrencyPool::unrestricted &&
       (impl_->active[pool_index] >= global_limit || principal->active[pool_index] >= device_limit))

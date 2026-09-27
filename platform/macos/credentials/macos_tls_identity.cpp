@@ -160,7 +160,9 @@ public:
   void validate(const std::string& common_name)
   {
     require(key && certificate && X509_check_private_key(certificate.get(), key.get()) == 1 &&
-                X509_verify(certificate.get(), key.get()) == 1,
+                X509_verify(certificate.get(), key.get()) == 1 &&
+                X509_NAME_cmp(X509_get_subject_name(certificate.get()),
+                              X509_get_issuer_name(certificate.get())) == 0,
             "Stored TLS identity is invalid or mismatched");
     std::array<char, 128> subject{};
     const auto count = X509_NAME_get_text_by_NID(

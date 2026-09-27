@@ -4,7 +4,7 @@
 #include <studio_remote/ipc/audio_monitor_reader.hpp>
 #include <studio_remote/media/audio_monitor_connection.hpp>
 
-#include <Windows.h>
+#include "../ipc/windows_ipc_mapping.hpp"
 #include <cstdint>
 #include <optional>
 
@@ -30,9 +30,9 @@ private:
   WindowsAudioMonitorIpc() = default;
   bool compatible() const;
 
-  HANDLE audio_handle_ = nullptr;
+  IpcMappingHandle audio_handle_;
   const ipc::AudioMonitorMapping* audio_ = nullptr;
-  HANDLE control_handle_ = nullptr;
+  IpcMappingHandle control_handle_;
   ipc::AudioMonitorControlMapping* control_ = nullptr;
   ipc::AudioMonitorReader reader_;
 };

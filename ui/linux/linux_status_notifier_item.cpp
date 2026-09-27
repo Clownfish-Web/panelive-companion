@@ -306,8 +306,9 @@ GVariant* LinuxStatusNotifierItem::property_read(GDBusConnection*,
                                                  const gchar* interface_name,
                                                  const gchar* property,
                                                  GError**,
-                                                 gpointer)
+                                                 gpointer context)
 {
+  const auto& self = *static_cast<LinuxStatusNotifierItem*>(context);
   if (std::string_view(interface_name) == status_interface)
   {
     const std::string_view name(property);
@@ -316,9 +317,9 @@ GVariant* LinuxStatusNotifierItem::property_read(GDBusConnection*,
     if (name == "Id")
       return g_variant_new_string("panelive-companion");
     if (name == "Title")
-      return g_variant_new_string("PaneLive Companion");
+      return g_variant_new_string(self.status_.title.c_str());
     if (name == "Status")
-      return g_variant_new_string("Active");
+      return g_variant_new_string(self.status_.attention ? "NeedsAttention" : "Active");
     if (name == "WindowId")
       return g_variant_new_int32(0);
     if (name == "IconName" || name == "AttentionIconName")
@@ -328,11 +329,19 @@ GVariant* LinuxStatusNotifierItem::property_read(GDBusConnection*,
     if (name == "IconPixmap" || name == "OverlayIconPixmap" || name == "AttentionIconPixmap")
       return empty_pixmaps();
     if (name == "ToolTip")
-      return g_variant_new("(s@a(iiay)ss)",
-                           icon_name,
-                           empty_pixmaps(),
-                           "PaneLive Companion",
-                           "Production monitoring and control companion");
+    {
+      std::string description;
+      for (const auto& line : self.status_.lines)
+      {
+        if (!description.empty())
+          description += "\n";
+        auto* escaped = g_markup_escape_text(line.c_str(), -1);
+        description += escaped;
+        g_free(escaped);
+      }
+      return g_variant_new(
+          "(s@a(iiay)ss)", icon_name, empty_pixmaps(), "PaneLive Companion", description.c_str());
+    }
     if (name == "ItemIsMenu")
       return g_variant_new_boolean(FALSE);
     if (name == "Menu")
@@ -382,6 +391,8 @@ void LinuxStatusNotifierItem::invoke_menu_item(std::int32_t id)
 
 void LinuxStatusNotifierItem::notify_menu_changed()
 {
+  if (!connection_ || menu_registration_ == 0)
+    return;
   ++menu_revision_;
   g_dbus_connection_emit_signal(connection_,
                                 nullptr,
@@ -398,6 +409,8 @@ GVariant* LinuxStatusNotifierItem::menu_layout(std::int32_t parent_id, std::int3
   g_variant_builder_init(&children, G_VARIANT_TYPE("av"));
   if (parent_id == 0 && depth != 0)
   {
+    for (std::size_t index = 0; index < status_.lines.size(); ++index)
+      g_variant_builder_add(&children, "v", menu_layout(100 + static_cast<std::int32_t>(index), 0));
     for (const auto id : menu_ids)
       g_variant_builder_add(&children, "v", menu_layout(id, 0));
   }
@@ -414,6 +427,12 @@ GVariant* LinuxStatusNotifierItem::menu_properties(std::int32_t id) const
   const auto add_bool = [&properties](const char* name, bool value)
   { g_variant_builder_add(&properties, "{sv}", name, g_variant_new_boolean(value)); };
   add_bool("visible", true);
+  if (id >= 100 && static_cast<std::size_t>(id - 100) < status_.lines.size())
+  {
+    add_bool("enabled", false);
+    add_string("label", status_.lines[static_cast<std::size_t>(id - 100)].c_str());
+    return g_variant_builder_end(&properties);
+  }
   add_bool("enabled", id != 0 && id != 3 && id != 6);
   switch (id)
   {
