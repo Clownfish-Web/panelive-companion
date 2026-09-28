@@ -34,8 +34,14 @@ For `SHA256SUMS`, use the hash on the line whose filename exactly matches your d
 From the directory containing the release assets and checksum manifest:
 
 ```sh
-shasum -a 256 -c SHA256SUMS
+shasum -a 256 -c SHA256SUMS-macos
 ```
+
+Use the `macos-arm64.pkg` asset on Apple silicon and `macos-x86_64.pkg` on Intel.
+The full filenames include the release version. Both require macOS 13 or later and
+matching native OBS 32.2.x for the integrated installer. The ZIP is an evaluation
+archive with a separate helper installation tool. Read the release notes for signing
+and notarization status before installing. See [macOS packaging](MACOS_RELEASE.md).
 
 ## Linux
 

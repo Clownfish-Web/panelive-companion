@@ -47,9 +47,11 @@ Before replacing an older personal installation, remove its app from ~/Applicati
 while preserving your Companion profile and Keychain items. Do not keep two app copies.
 No separate plugin installation command is required.
 
-This development package is unsigned and not notarized. The app and OBS helper retain
-their configured build signatures; local builds use the configured Apple Development team identity. macOS may require explicit approval in
-System Settings > Privacy & Security.
+Release builds use Developer ID Application signatures for the app and helpers,
+and Developer ID Installer for the package. Local evaluation builds may use
+Apple Development signatures and an unsigned package. Read the accompanying release
+notes for the actual signing and notarization status. Signing alone does not mean
+the download has been notarized; macOS may block an unnotarized download.
 
 The Companion is Apache-2.0; the separate OBS helper is GPL-2.0-or-later.
 Licenses, notices and the helper reinstall tool are available after installation at:

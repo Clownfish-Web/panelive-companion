@@ -5,6 +5,10 @@ endif()
 include(../cmake/Version.cmake)
 project(panelive-companion-obs-plugin VERSION ${STUDIO_REMOTE_VERSION}
   DESCRIPTION "${STUDIO_REMOTE_PRODUCT_NAME}" LANGUAGES CXX)
+if(APPLE)
+  include(../cmake/platform/MacosSourcePaths.cmake)
+  studio_remote_configure_macos_source_paths()
+endif()
 
 include(GNUInstallDirs)
 

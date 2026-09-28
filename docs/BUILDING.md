@@ -182,6 +182,9 @@ For Intel, use `macos-x64-release` in the executable copy command. The ad-hoc si
 above is for local evaluation. For a signed build, use your own signing identity and
 the appropriate timestamp option, consistent with the Companion and helper builds.
 
+For the complete signed staging workflow, integrated `.pkg` installers, Intel builds,
+and GitHub release assets, follow [macOS release packaging](MACOS_RELEASE.md).
+
 ## Linux x86_64 (Ubuntu and Debian)
 
 Ubuntu 22.04 with Linux 5.15, glibc 2.35, GTK 4.6 and Libadwaita 1.1 is the declared

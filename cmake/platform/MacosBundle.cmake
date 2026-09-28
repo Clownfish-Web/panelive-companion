@@ -32,9 +32,9 @@ function(studio_remote_configure_macos_bundle target)
   studio_remote_add_macos_bundle_resource(${target}
     "${STUDIO_REMOTE_MACOS_ICON_DIRECTORY}/${PANELIVE_COMPANION_PACKAGE_ID}.icns" "")
   foreach(resource IN ITEMS LICENSE NOTICE THIRD_PARTY_NOTICES.md
-      README.md docs/BUILDING.md docs/RUNNING.md docs/DOWNLOADS.md
+      README.md docs/BUILDING.md docs/RUNNING.md docs/DOWNLOADS.md docs/MACOS_RELEASE.md
       obs-plugin/LICENSE packaging/macos/INSTALL_OBS_PLUGIN_MACOS.md
-      releases/0.1.0-beta.1/SHA256SUMS releases/0.1.0-beta.1/release.json)
+      releases/0.1.0-beta.1/release.json)
     get_filename_component(resource_directory "${resource}" DIRECTORY)
     studio_remote_add_macos_bundle_resource(${target} "${PROJECT_SOURCE_DIR}/${resource}"
       "share/${PANELIVE_COMPANION_PACKAGE_ID}/${resource_directory}")

@@ -1,0 +1,29 @@
+--- a/Configurations/unix-Makefile.tmpl
++++ b/Configurations/unix-Makefile.tmpl
+@@ -451,8 +451,8 @@
+                 join(' ', $lib_cppflags,
+                           (map { '-D'.$_ }
+                                'OPENSSLDIR="\"$(OPENSSLDIR)\""',
+-                               'ENGINESDIR="\"$(ENGINESDIR)\""',
+-                               'MODULESDIR="\"$(MODULESDIR)\""'),
++                               'ENGINESDIR="\"/Library/Application Support/panelive-companion/openssl/engines-3\""',
++                               'MODULESDIR="\"/Library/Application Support/panelive-companion/openssl/ossl-modules\""'),
+                           '$(CNF_CPPFLAGS)', '$(CPPFLAGS)') -}
+ LIB_CFLAGS={- join(' ', $target{lib_cflags} || (),
+                         $target{shared_cflag} || (),
+--- a/util/mkbuildinf.pl
++++ b/util/mkbuildinf.pl
+@@ -8,9 +8,12 @@
+ 
+ use strict;
+ use warnings;
++use Text::ParseWords qw(shellwords);
+ 
+ my $platform = pop @ARGV;
+-my $cflags = join(' ', @ARGV);
++# Source-prefix mappings contain local paths; omit them from public build metadata.
++my $cflags = join(' ', grep { !/^-f(?:file|macro|debug)-prefix-map=/ }
++    shellwords(join(' ', @ARGV)));
+ $cflags =~ s(\\)(\\\\)g;
+ $cflags = "compiler: $cflags";
+ 

@@ -13,6 +13,10 @@ endif()
 include(cmake/Version.cmake)
 project(panelive-companion VERSION ${STUDIO_REMOTE_VERSION}
   DESCRIPTION "${STUDIO_REMOTE_PRODUCT_NAME}" LANGUAGES C CXX)
+if(APPLE)
+  include(cmake/platform/MacosSourcePaths.cmake)
+  studio_remote_configure_macos_source_paths()
+endif()
 
 set(PANELIVE_COMPANION_PACKAGE_ID "panelive-companion")
 

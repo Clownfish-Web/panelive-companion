@@ -80,7 +80,7 @@ elseif(VCPKG_TARGET_IS_OSX)
   endif()
   list(APPEND FFMPEG_9_OPTIONS
     "--arch=${FFMPEG_9_OSX_ARCHITECTURE}"
-    "--extra-cflags=${FFMPEG_9_OSX_FLAGS}"
+    "--extra-cflags=${FFMPEG_9_OSX_FLAGS} ${VCPKG_C_FLAGS}"
     "--extra-ldflags=${FFMPEG_9_OSX_FLAGS}")
 elseif(VCPKG_TARGET_IS_IOS)
   list(APPEND FFMPEG_9_OPTIONS --enable-pthreads)
