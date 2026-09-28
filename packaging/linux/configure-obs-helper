@@ -1,0 +1,83 @@
+#!/bin/sh
+# Manage system OBS links to this install's private helper, preserving foreign files.
+set -eu
+PATH=/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+export LC_ALL=C
+unset LD_LIBRARY_PATH LD_PRELOAD LD_AUDIT
+[ "$(id -u)" -eq 0 ] || { echo 'Run OBS helper setup with sudo.' >&2; exit 1; }
+app=/opt/panelive-companion
+binary=$app/usr/lib/panelive-companion/obs-plugin/panelive-companion-obs-plugin.so
+data=$app/usr/share/panelive-companion/obs-plugin/data
+state=/var/lib/panelive-companion
+remove_link()
+{
+    link=$1
+    target=$2
+    if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then rm -- "$link"; fi
+}
+remove_links()
+{
+    if [ -f "$state/obs-helper-binary-link" ]; then
+        remove_link "$(cat "$state/obs-helper-binary-link")" "$binary"
+    fi
+    if [ -f "$state/obs-helper-data-link" ]; then
+        remove_link "$(cat "$state/obs-helper-data-link")" "$data"
+    fi
+    # Also clean up links owned by the earlier, unbundled Debian package.
+    remove_link /usr/lib/x86_64-linux-gnu/obs-plugins/panelive-companion-obs-plugin.so /usr/lib/panelive-companion/obs-plugin/panelive-companion-obs-plugin.so
+    remove_link /usr/share/obs/obs-plugins/panelive-companion-obs-plugin /usr/share/panelive-companion/obs-plugin/data
+    rm -f "$state/obs-helper-binary-link" "$state/obs-helper-data-link"
+}
+record_status()
+{
+    install -d -m 755 "$state"
+    temporary=$(mktemp "$state/.status.XXXXXXXX")
+    printf '%s\n' "$1" > "$temporary"
+    chmod 644 "$temporary"
+    mv -f -- "$temporary" "$state/obs-helper-status"
+    printf 'PaneLive Companion: %s\n' "$1"
+}
+inactive()
+{
+    remove_links
+    record_status "$1"
+    exit 0
+}
+case "${1:-}" in
+    --remove)
+        remove_links
+        rm -f "$state/obs-helper-status"
+        rmdir "$state" 2>/dev/null || true
+        exit 0 ;;
+    '') ;;
+    *) echo 'Usage: configure-obs-helper [--remove]' >&2; exit 2 ;;
+esac
+test -f "$binary"
+test -f "$data/locale/en-US.ini"
+obs=$(command -v obs || true)
+[ -n "$obs" ] || inactive 'OBS not installed. Teleprompter is ready. After installing native OBS 30+, run sudo /opt/panelive-companion/configure-obs-helper.'
+obs=$(readlink -f "$obs")
+resolved=$(ldd "$obs" 2>&1) || inactive 'OBS helper inactive: native OBS 30+ with Qt 6 and libobs.so.30 is required.'
+obs_library=$(printf '%s\n' "$resolved" | awk '$1 == "libobs.so.30" && $2 == "=>" && $3 ~ /^\// { print $3; exit }')
+[ -n "$obs_library" ] || inactive 'OBS helper inactive: this OBS does not use the supported libobs.so.30 ABI. Install compatible native OBS 30+ with Qt 6.'
+resolved=$(ldd -r "$binary" 2>&1) || inactive 'OBS helper inactive: required OBS/Qt libraries are unavailable.'
+if printf '%s\n' "$resolved" | grep -Eq 'not found|undefined symbol'; then
+    inactive 'OBS helper inactive: required OBS/Qt libraries are missing or incompatible.'
+fi
+binary_link=$(dirname "$(readlink -f "$obs_library")")/obs-plugins/panelive-companion-obs-plugin.so
+data_link=$(dirname "$(dirname "$obs")")/share/obs/obs-plugins/panelive-companion-obs-plugin
+# Remove only our old links, including migration from the previous Debian package.
+remove_links
+for link in "$binary_link" "$data_link"; do
+    if [ -e "$link" ] || [ -L "$link" ]; then
+        inactive 'OBS helper setup blocked: an unmanaged helper already exists. Remove that older helper and run sudo /opt/panelive-companion/configure-obs-helper.'
+    fi
+done
+install -d -m 755 "$state" "$(dirname "$binary_link")" "$(dirname "$data_link")"
+printf '%s\n' "$binary_link" > "$state/obs-helper-binary-link"
+printf '%s\n' "$data_link" > "$state/obs-helper-data-link"
+chmod 644 "$state/obs-helper-binary-link" "$state/obs-helper-data-link"
+ln -s "$binary" "$binary_link"
+ln -s "$data" "$data_link"
+record_status 'OBS helper installed. Restart OBS to load the matching helper.'

@@ -45,12 +45,17 @@ and notarization status before installing. See [macOS packaging](MACOS_RELEASE.m
 
 ## Linux
 
-The same **amd64 `.deb` installer** supports the verified Ubuntu 22.04, 24.04 and
-26.04, and Debian 12 and 13 desktop targets. Download
-`panelive-companion-0.1.0-beta.1-linux-x64.deb` and `SHA256SUMS-linux`.
-The installer contains Companion and its matching OBS helper; no second helper
-download is needed. See [Linux support and validation](LINUX_SUPPORT.md) for native
-OBS requirements and automatic setup behavior.
+Linux x86_64 release installers bundle the application libraries and matching OBS
+helper, with Ubuntu 22.04 userspace as their build floor:
+
+- `panelive-companion-0.1.0-beta.1-linux-x64.deb` — install using `sudo apt install ./filename.deb`.
+- `panelive-companion-0.1.0-beta.1-linux-x64-installer.tar.gz` — extract and run `sudo ./install.sh`.
+- `SHA256SUMS-linux` — checksums for the release files.
+
+Both perform system installation with command and desktop-menu registration. They
+require glibc 2.35+ and normal desktop services. See
+[installation instructions](../packaging/linux/README.md) and
+[release packaging](LINUX_RELEASE.md). Incompatible systems require a source build.
 
 ```sh
 sha256sum --check SHA256SUMS-linux

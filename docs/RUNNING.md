@@ -131,13 +131,19 @@ APT removes the obsolete separate `panelive-companion-obs-plugin` package during
 migration to this installer. Manually installed helpers are preserved; remove a
 conflicting older copy and reinstall Companion if setup reports a conflict.
 
-The helper payload lives under `/usr/lib/panelive-companion/obs-plugin/`. Setup exposes
+The release installs its bundled runtime under `/opt/panelive-companion`. The helper
+payload is in `usr/lib/panelive-companion/obs-plugin/` beneath that directory. Setup exposes
 it to compatible OBS through links under `/usr/lib/x86_64-linux-gnu/obs-plugins/` and
 `/usr/share/obs/obs-plugins/`. Uninstall removes the bundled helper and its managed
 links while preserving user profiles. Use a graphical user session
 with session D-Bus, an unlocked Secret Service keyring and Avahi available for discovery.
 The Companion uses the user's XDG state directory. Run it as your normal user,
 not through `sudo`.
+
+For other compatible x86_64 Linux desktops, extract
+`panelive-companion-0.1.0-beta.1-linux-x64-installer.tar.gz` and run `sudo ./install.sh`.
+This installs the same bundled runtime and registers the command and application
+menu entry. See [CLI installation, upgrades and removal](../packaging/linux/README.md).
 
 Linux management preserves pending form edits and device selections during status
 refreshes. The pairing QR can be enlarged temporarily; close it with the close button

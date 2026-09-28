@@ -187,6 +187,10 @@ and GitHub release assets, follow [macOS release packaging](MACOS_RELEASE.md).
 
 ## Linux x86_64 (Ubuntu and Debian)
 
+For release installers with bundled application libraries, use the
+[Linux release workflow](LINUX_RELEASE.md). The commands below produce a native,
+system-library-dependent `.deb` for source-build users.
+
 Ubuntu 22.04 with Linux 5.15, glibc 2.35, GTK 4.6 and Libadwaita 1.1 is the declared
 support floor. The same baseline-built Companion installer has passed package and
 desktop/runtime checks on Ubuntu 22.04, 24.04 and 26.04, plus Debian 12 and 13.

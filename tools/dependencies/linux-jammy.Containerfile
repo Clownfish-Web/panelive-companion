@@ -14,7 +14,8 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     build-essential git zip unzip tar pkg-config ninja-build nasm \
     libadwaita-1-dev libgtk-4-dev libsecret-1-dev libavahi-client-dev \
     libpulse-dev libjpeg-dev qt6-base-dev obs-studio=30.2.3-0obsproject1~jammy \
-    python3 dpkg-dev lintian xvfb xauth dbus-x11 gnome-keyring pulseaudio
+    python3 dpkg-dev lintian xvfb xauth dbus-x11 gnome-keyring pulseaudio \
+    autoconf automake libtool librsvg2-common fonts-dejavu-core desktop-file-utils
 
 RUN curl -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-linux-x86_64.tar.gz \
     -o /tmp/cmake.tar.gz \

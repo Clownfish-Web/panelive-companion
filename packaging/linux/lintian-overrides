@@ -1,0 +1,29 @@
+# This is an upstream, self-contained add-on installer, not a Debian archive
+# package using distribution-shared libraries. Its private runtime belongs in
+# /opt; the command, menu entry, icon, manpage and package metadata use /usr.
+panelive-companion: dir-or-file-in-opt opt/panelive-companion/*
+# Bundled libraries and fallback fonts are deliberate release requirements.
+# Versions, hashes and upstream notices are shipped in linux-runtime.json and
+# licenses/linux-runtime. Restrict each exception to the shipped runtime files.
+panelive-companion: embedded-library expat opt/panelive-companion/usr/lib/libexpat.so.1
+panelive-companion: embedded-library freetype opt/panelive-companion/usr/lib/libfreetype.so.6
+panelive-companion: embedded-library gmp opt/panelive-companion/usr/lib/libgmp.so.10
+panelive-companion: embedded-library libidn2-0 opt/panelive-companion/usr/lib/libidn2.so.0
+panelive-companion: embedded-library libjpeg opt/panelive-companion/usr/lib/libjpeg.so.8
+panelive-companion: embedded-library libpng opt/panelive-companion/usr/lib/libpng16.so.16
+panelive-companion: embedded-library libxml2 opt/panelive-companion/usr/lib/libxml2.so.2
+panelive-companion: embedded-library tiff opt/panelive-companion/usr/lib/libtiff.so.5
+panelive-companion: embedded-library libjpeg *opt/panelive-companion/usr/bin/panelive-companion*
+panelive-companion: embedded-library srtp *opt/panelive-companion/usr/bin/panelive-companion*
+panelive-companion: embedded-library zlib *opt/panelive-companion/usr/bin/panelive-companion*
+panelive-companion: duplicate-font-file opt/panelive-companion/usr/share/fonts/truetype/dejavu/*
+# Preserve upstream Ubuntu runtime binaries byte-for-byte. The launcher sets
+# LD_LIBRARY_PATH to the private runtime; tests audit libpulsecommon resolution.
+panelive-companion: custom-library-search-path *opt/panelive-companion/usr/lib/libpulse-simple.so.0*
+panelive-companion: custom-library-search-path *opt/panelive-companion/usr/lib/libpulse.so.0*
+# These upstream modules use transitively linked libc, and these upstream data/
+# compatibility libraries intentionally have no direct runtime prerequisites.
+panelive-companion: library-not-linked-against-libc opt/panelive-companion/usr/lib/gdk-pixbuf-2.0/loaders/libpixbufloader-svg.so
+panelive-companion: library-not-linked-against-libc opt/panelive-companion/usr/lib/libcairo-gobject.so.2
+panelive-companion: shared-library-lacks-prerequisites opt/panelive-companion/usr/lib/libX11-xcb.so.1
+panelive-companion: shared-library-lacks-prerequisites opt/panelive-companion/usr/lib/libicudata.so.70

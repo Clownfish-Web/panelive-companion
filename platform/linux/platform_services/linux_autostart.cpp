@@ -16,6 +16,33 @@ std::filesystem::path config_home()
     return std::filesystem::path(home) / ".config";
   throw std::runtime_error("Neither XDG_CONFIG_HOME nor HOME is available");
 }
+
+std::string startup_command()
+{
+  const auto* launcher = std::getenv("PANELIVE_LINUX_LAUNCHER");
+  if (!launcher || !*launcher)
+    return "panelive-companion";
+  // Desktop Entry Exec quoting differs from shell quoting. A literal percent
+  // must also be doubled so it cannot become a field code.
+  std::string command = "\"";
+  for (const char c : std::string(launcher))
+  {
+    if (c == '\n' || c == '\r')
+      throw std::runtime_error("The application path cannot contain a newline");
+    if (c == '\\')
+      command += "\\\\\\\\";
+    else if (c == '"' || c == '`' || c == '$')
+    {
+      command += "\\\\";
+      command += c;
+    }
+    else if (c == '%')
+      command += "%%";
+    else
+      command += c;
+  }
+  return command + "\"";
+}
 } // namespace
 
 SignInStartup::SignInStartup()
@@ -38,6 +65,7 @@ void SignInStartup::set_enabled(bool enabled) const
       throw std::runtime_error("Could not disable desktop-session startup: " + error.message());
     return;
   }
+  const auto command = startup_command();
   std::filesystem::create_directories(path_.parent_path());
   const auto temporary = path_.string() + ".tmp";
   {
@@ -47,8 +75,8 @@ void SignInStartup::set_enabled(bool enabled) const
     stream << "[Desktop Entry]\n"
               "Type=Application\n"
               "Name=PaneLive Companion\n"
-              "Exec=panelive-companion\n"
-              "Icon=com.clownfishweb.PaneLiveCompanion\n"
+           << "Exec=" << command << '\n'
+           << "Icon=com.clownfishweb.PaneLiveCompanion\n"
               "Terminal=false\n"
               "X-GNOME-Autostart-enabled=true\n"
               "NoDisplay=true\n";

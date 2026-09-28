@@ -62,6 +62,12 @@ macOS uses separate Apple Silicon and Intel builds. See the
 
 ### Supported Linux distributions
 
+Linux release installers bundle the application's GTK and media libraries. Use
+the standard `.deb` on Ubuntu/Debian, or the CLI system installer on other
+compatible x86_64 Linux desktops. Both register the command and desktop menu entry.
+See [installation instructions](packaging/linux/README.md). The required baseline
+is glibc 2.35+ with normal desktop services; incompatible targets need a source build.
+
 **One `.deb` installer works across all of these verified distributions:**
 
 | Distribution | Supported versions |
@@ -72,7 +78,8 @@ macOS uses separate Apple Silicon and Intel builds. See the
 These x86_64 desktop targets passed installation, GUI and HTTPS startup, autostart,
 removal and reinstall checks using the **same installer**, built on Ubuntu 22.04.
 Ubuntu 24.04 was also verified on a native desktop. Use current distribution updates
-and install with `apt` so the required desktop libraries are resolved automatically.
+and install with `apt` for standard package management. Application libraries are
+bundled privately; desktop services remain supplied by the host.
 
 Other Ubuntu/Debian derivatives and newer releases may work when they provide the
 required libraries, but are not yet included in the verified support list.

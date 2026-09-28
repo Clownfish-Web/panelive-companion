@@ -1,8 +1,9 @@
 # Linux support and validation
 
-PaneLive Companion provides one **amd64 / x86_64 `.deb` installer** for the verified
-Ubuntu and Debian desktop releases below. The installer is built in Ubuntu 22.04
-userspace and used unchanged across these distributions.
+PaneLive Companion provides an **amd64 / x86_64 `.deb` installer** for Ubuntu and
+Debian, and a **CLI system installer** for other compatible Linux desktops. Both
+bundle their application libraries under `/opt/panelive-companion` and are built
+in Ubuntu 22.04 userspace. See [installation instructions](../packaging/linux/README.md).
 
 ## Supported distributions
 
@@ -11,7 +12,9 @@ userspace and used unchanged across these distributions.
 | Ubuntu | 22.04, 24.04, 26.04 | Package lifecycle and desktop/runtime smoke checks on every version; additional native desktop verification on 24.04 |
 | Debian | 12, 13 | Package lifecycle and desktop/runtime smoke checks on both versions |
 
-This is the verified support list for **0.1.0-beta.1**, tested on **2026-09-24**.
+The original native `.deb` was verified on these targets on **2026-09-24**.
+For the new installers with bundled libraries, the release’s `linux-VALIDATION.md`
+records the checks and exact installer hashes.
 Other Ubuntu/Debian derivatives and newer releases are compatibility candidates when
 they supply the required libraries. They are not yet advertised as verified targets.
 Linux ARM, RPM packages and other distribution families are outside this release's
@@ -24,9 +27,9 @@ tested package scope.
 - The declared support floor is **Linux 5.15 and Ubuntu 22.04 userspace**, including
   GTK 4.6 and Libadwaita 1.1. A newer kernel alone does not provide compatible desktop
   libraries.
-- The tested installer requires `libc6 >= 2.34` and `libstdc++6 >= 12`; the latter is
-  available through Ubuntu 22.04 updates and on the verified newer distributions.
-  APT reads the complete dependency list from the package.
+- The bundled-runtime release requires **glibc 2.35+**. GTK4, Libadwaita, the C++
+  runtime and application media libraries are bundled privately. The `.deb` declares
+  its glibc requirement to APT and recommends normal desktop services.
 - A graphical user session, session D-Bus and an unlocked Secret Service keyring.
   Avahi supplies LAN discovery. Run Companion as your normal desktop user.
 
@@ -58,7 +61,7 @@ use a compatible newer native OBS package. Flatpak/Snap OBS cannot load the nati
 helper. The Companion distribution checks do not imply that every distribution's
 OBS package has also been verified.
 
-## What was verified
+## Earlier native-package verification
 
 The identical Companion installer passed the following checks on all five listed
 distribution versions:
@@ -85,13 +88,16 @@ mobile pairing, live media streaming or physical audio devices on every distribu
 ## Release files
 
 - Combined installer: `panelive-companion-0.1.0-beta.1-linux-x64.deb`.
+- Generic CLI installer: `panelive-companion-0.1.0-beta.1-linux-x64-installer.tar.gz`.
 - Checksum manifest: `SHA256SUMS-linux`.
 - Build provenance and detailed verification: `linux-build-manifest.json` and
   `linux-VALIDATION.md`, when attached to the release.
 
 The Debian package name remains `panelive-companion`, with version
 `0.1.0~beta.1`. The filename identifies Linux explicitly on the shared release page.
-Use the release's checksum manifest to identify the exact tested installer bytes.
+Use the release's checksum manifest and validation record to identify the exact
+tested installer bytes. The release artifacts live under `out/release/v0.1.0-beta.1/linux/`;
+superseded local packages are archived outside that upload directory.
 
 Release availability and signing status are stated in
 [GitHub Releases](https://github.com/Clownfish-Web/panelive-companion/releases).

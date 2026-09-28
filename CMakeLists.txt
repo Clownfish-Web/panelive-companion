@@ -940,8 +940,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   install(FILES
     platform/linux/packaging/panelive-companion-autostart.desktop
     DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/autostart")
-  install(DIRECTORY ui/linux/omarchy-widget/
-    DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/omarchy-widget")
+  if(STUDIO_REMOTE_LINUX_DISTRIBUTION STREQUAL "ARCH")
+    install(DIRECTORY ui/linux/omarchy-widget/
+      DESTINATION "share/${PANELIVE_COMPANION_PACKAGE_ID}/omarchy-widget")
+  endif()
   find_program(GZIP_EXECUTABLE gzip REQUIRED)
   if(STUDIO_REMOTE_LINUX_DISTRIBUTION STREQUAL "DEBIAN")
     configure_file(platform/linux/packaging/changelog
