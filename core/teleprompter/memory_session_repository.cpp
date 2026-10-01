@@ -335,7 +335,8 @@ Result<SessionCommandResult> MemorySessionRepository::command(std::string_view d
   ++changed.value->version;
   // Transient operator controls do not invalidate Master geometry or recognition.
   if (!std::holds_alternative<AdjustSessionSpeed>(command.action) &&
-      !std::holds_alternative<ForceContinueSession>(command.action))
+      !std::holds_alternative<ForceContinueSession>(command.action) &&
+      !std::holds_alternative<SetVideoMonitor>(command.action))
   {
     changed.value->alignment.reset();
     changed.value->voice_follow = {};

@@ -212,6 +212,11 @@ json snapshot_json(const SessionSnapshot& snapshot)
           {"voiceFollow", voice_follow_json(state.voice_follow)},
           {"timedPause", timed_pause_json(state.timed_pause)},
           {"forceContinue", state.force_continue},
+          {"videoMonitor",
+           {{"enabled", state.video_monitor.enabled},
+            {"source",
+             state.video_monitor.source == VideoMonitorSource::program ? "program" : "preview"},
+            {"backdropOpacity", state.video_monitor.backdrop_opacity}}},
           {"startupBypass", state.startup_bypass},
           {"speedAdjustment",
            {{"epoch", state.speed_adjustment.epoch},
@@ -323,6 +328,25 @@ std::optional<SessionAction> parse_action(const json& body)
   {
     if (const auto settings = parse_settings(body.at("settings")))
       return SetSessionSettings{*settings};
+  }
+  if (*type == "video-monitor" && body.size() == 4 && body.contains("videoMonitor"))
+  {
+    const auto& video = body.at("videoMonitor");
+    if (!video.is_object() || video.size() != 3 || !video.contains("enabled") ||
+        !video.at("enabled").is_boolean() || !video.contains("source") ||
+        !video.at("source").is_string() || !video.contains("backdropOpacity") ||
+        !video.at("backdropOpacity").is_number())
+      return std::nullopt;
+    const auto source = video.at("source").get<std::string>();
+    if (source != "program" && source != "preview")
+      return std::nullopt;
+    const auto opacity = video.at("backdropOpacity").get<double>();
+    if (!std::isfinite(opacity) || opacity < 0 || opacity > 0.8)
+      return std::nullopt;
+    return SetVideoMonitor{
+        {video.at("enabled").get<bool>(),
+         source == "program" ? VideoMonitorSource::program : VideoMonitorSource::preview,
+         opacity}};
   }
   if (*type == "force-continue" && body.size() == 4 && body.contains("enabled") &&
       body.at("enabled").is_boolean())

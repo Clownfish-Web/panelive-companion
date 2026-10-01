@@ -265,12 +265,22 @@ Result<SessionState> apply_session_action(SessionState state,
       return invalid();
     if (state.settings.voice_follow_enabled != settings->settings.voice_follow_enabled)
       state.startup_bypass = false;
-    if (state.settings.voice_follow_enabled && !settings->settings.voice_follow_enabled)
-      state.playback = PlaybackState::paused;
     if (state.settings.font_family != settings->settings.font_family)
       state.master_width_capacity.reset();
     state.settings = settings->settings;
     constrain_master_width(state);
+  }
+  else if (const auto* video = std::get_if<SetVideoMonitor>(&action))
+  {
+    if (state.provider != "obs" && state.provider != "vmix" && state.provider != "streamlabs")
+      return invalid();
+    if (video->settings.source != VideoMonitorSource::program &&
+        video->settings.source != VideoMonitorSource::preview)
+      return invalid();
+    if (!std::isfinite(video->settings.backdrop_opacity) || video->settings.backdrop_opacity < 0 ||
+        video->settings.backdrop_opacity > 0.8)
+      return invalid();
+    state.video_monitor = video->settings;
   }
   else if (const auto* force = std::get_if<ForceContinueSession>(&action))
     state.force_continue = force->enabled;
@@ -321,6 +331,10 @@ std::string session_command_identity(const SessionCommand& command)
     result += ":" + std::to_string(value.speed_trim_percent);
     result += ":" + std::to_string(value.voice_follow_enabled) + ":" + value.speech_language;
   }
+  if (const auto* video = std::get_if<SetVideoMonitor>(&command.action))
+    result += ":" + std::to_string(video->settings.enabled) + ":" +
+              std::to_string(static_cast<int>(video->settings.source)) + ":" +
+              std::to_string(std::bit_cast<std::uint64_t>(video->settings.backdrop_opacity));
   if (const auto* force = std::get_if<ForceContinueSession>(&command.action))
     result += ":" + std::to_string(force->enabled);
   if (const auto* speed = std::get_if<AdjustSessionSpeed>(&command.action))

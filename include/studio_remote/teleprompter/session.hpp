@@ -116,6 +116,18 @@ struct SpeedAdjustmentState
   double displacement = 0;
   std::uint64_t expires_at_monotonic_ms = 0;
 };
+enum class VideoMonitorSource
+{
+  program,
+  preview
+};
+struct VideoMonitorSettings
+{
+  bool enabled = false;
+  VideoMonitorSource source = VideoMonitorSource::program;
+  double backdrop_opacity = 0.4;
+  bool operator==(const VideoMonitorSettings&) const = default;
+};
 struct SessionState
 {
   std::string id;
@@ -124,6 +136,7 @@ struct SessionState
   std::string script_id;
   std::uint64_t script_revision = 1;
   PresentationSettings settings;
+  VideoMonitorSettings video_monitor;
   PlaybackState playback = PlaybackState::ready;
   std::uint64_t elapsed_ms = 0;
   std::uint64_t anchor_monotonic_ms = 0;
@@ -216,6 +229,11 @@ struct AdjustSessionSpeed
   std::uint64_t sampled_at_monotonic_ms = 0;
   bool operator==(const AdjustSessionSpeed&) const = default;
 };
+struct SetVideoMonitor
+{
+  VideoMonitorSettings settings;
+  bool operator==(const SetVideoMonitor&) const = default;
+};
 using SessionAction = std::variant<PlaySession,
                                    PauseSession,
                                    ResetSession,
@@ -223,7 +241,8 @@ using SessionAction = std::variant<PlaySession,
                                    SetSessionSettings,
                                    SelectSessionScript,
                                    ForceContinueSession,
-                                   AdjustSessionSpeed>;
+                                   AdjustSessionSpeed,
+                                   SetVideoMonitor>;
 struct SessionCommand
 {
   std::string command_id;
