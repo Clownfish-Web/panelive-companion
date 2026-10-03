@@ -108,6 +108,9 @@ Compress-Archive -LiteralPath $package -DestinationPath "$package.zip"
 Get-FileHash -LiteralPath "$package.zip" -Algorithm SHA256
 ```
 
+Windows releases always name the combined installer and standalone ZIP checksum
+manifest `SHA256SUMS-windows`.
+
 ## macOS arm64 or x86_64
 
 Use macOS 13+, Xcode with the Swift 6 toolchain, the Command Line Tools, CMake 3.28+,

@@ -26,7 +26,7 @@ if ($expected -notmatch '^[0-9a-fA-F]{64}$' -or $actual -ine $expected) {
 'SHA-256 verified'
 ```
 
-For `SHA256SUMS`, use the hash on the line whose filename exactly matches your download.
+For `SHA256SUMS-windows`, use the hash on the line whose filename exactly matches your download.
 `Get-FileHash -Algorithm SHA256 -LiteralPath 'path-to-installer.exe'` displays the actual hash.
 
 ## macOS
@@ -71,11 +71,12 @@ After verification, follow [installation and first-run instructions](RUNNING.md)
 
 ## Windows release artifacts
 
-The [0.1.0-beta.1 checksum manifest](../releases/0.1.0-beta.1/SHA256SUMS) records the
+The [0.1.0-beta.1 checksum manifest](../releases/0.1.0-beta.1/SHA256SUMS-windows) records the
 Windows x64 setup executable and evaluation ZIP built from this public source tree:
 
 - `panelive-companion-0.1.0-beta.1-windows-x64-setup.exe`
 - `panelive-companion-0.1.0-beta.1-windows-x64.zip`
+- `SHA256SUMS-windows`
 
 Both contain the renamed `panelive-companion-obs-plugin` helper. These evaluation
 packages are unsigned. The checksum manifest does not itself publish the binaries;
