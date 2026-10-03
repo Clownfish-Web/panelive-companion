@@ -83,8 +83,9 @@ or re-signing release artifacts requires new notarization before distribution.
 Use Swift's `#fileID` for runtime diagnostics: its explicit `#filePath` literal is
 not remapped by Swift's compiler metadata flags and would fail the packaging audit.
 
-The installer builder creates a single integrated PKG, expands it again, compares
-payload hashes and scripts, verifies signatures, and checks installer choices and
+The installer builder creates a single integrated PKG, sets its preinstall/postinstall
+entry points executable regardless of checkout permissions, expands it again, compares
+payload hashes and scripts, verifies packaged execute permissions and signatures, and checks installer choices and
 system installation scope. It does not install anything or change user settings.
 The required Teleprompter component is included. OBS setup uses the native integration
 component and the current `/Library/Application Support/panelive-companion/installation`

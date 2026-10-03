@@ -160,6 +160,9 @@ cp "${package_root}/Install-ObsPlugin.sh" "${workspace}/scripts/Install-ObsPlugi
 for script in preinstall postinstall installer-environment.sh Install-ObsPlugin.sh; do
   /bin/bash -n "${workspace}/scripts/${script}"
 done
+# PackageKit executes these entry points directly. Normalize staging permissions
+# even when the source checkout was created on a filesystem without executable bits.
+chmod 0755 "${workspace}/scripts/preinstall" "${workspace}/scripts/postinstall"
 
 # Fixed locations and whole-bundle upgrades prevent relocation to a developer checkout or
 # retaining obsolete signed resources. LocalSystem placement assigns root ownership.
@@ -216,6 +219,10 @@ cmp "${package_root}/share/${identity}/BUILD_VERIFICATION.txt" \
   "${expanded}/Payload/${support_relative}/share/${identity}/BUILD_VERIFICATION.txt"
 for script in preinstall postinstall installer-environment.sh Install-ObsPlugin.sh; do
   cmp "${workspace}/scripts/${script}" "${expanded}/Scripts/${script}"
+done
+for script in preinstall postinstall; do
+  [[ -x "${expanded}/Scripts/${script}" ]] ||
+    release_fail "The packaged ${script} entry point is not executable."
 done
 macos_verify_bundle "${expanded}/Scripts/${plugin_identity}.plugin" \
   "${plugin_identity}" "${macos_architecture}" "${obs_app}"

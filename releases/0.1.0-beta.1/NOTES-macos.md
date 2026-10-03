@@ -16,18 +16,22 @@ OBS, use the application from the ZIP.
 
 **Signing:** the app, helper and integration component are signed with Developer ID
 Application; the PKG installers are signed with Developer ID Installer. Both use
-Apple-issued certificates and secure timestamps. Both architectures' installers and ZIP contents are **notarized**. Tickets are
-stapled to the PKG installers and the application bundles in the ZIPs;
-ticket validation and Gatekeeper assessments passed during release finalization.
+Apple-issued certificates and secure timestamps. The ZIP contents retain their
+notarization and stapled tickets. The October 3 installer repair rebuilt both
+signed PKGs; these replacement PKGs require fresh notarization and stapling before
+distribution. Do not reuse the earlier packages' notarization result.
 
 The release workflow checks Release compilation, public packaging and Mach-O
 tests, signatures, deployment metadata, dependency resolution, extracted installer
 payload hashes, installation scope and required choices. The Apple silicon build
 runs natively; Intel executable smoke checks run under Rosetta on Apple silicon.
 Private application/UI/IPC suites are not included in the public source workflow.
-Fresh installs, upgrades and full live media operation were not exercised as part
-of this packaging run. Physical Intel hardware and older macOS runtime acceptance
-remain unverified.
+The October 3 Apple silicon repair passed an actual native Installer upgrade on
+the development Mac, including both installer callbacks, shared OBS helper placement,
+and Companion launch. Paired iPad clients reconnected and shared teleprompter video
+worked. Both expanded PKGs verify executable preinstall/postinstall entry points;
+23 release-tool tests passed. Clean installation, physical Intel hardware and older
+macOS runtime acceptance remain unverified.
 
 To verify all downloaded macOS assets from their directory:
 
