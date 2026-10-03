@@ -81,6 +81,8 @@ void WinUiManagementPagesHost::show(ManagementPage kind, WinUiPageContext contex
   const bool editable =
       kind == ManagementPage::adapters || kind == ManagementPage::companion_settings ||
       kind == ManagementPage::advanced_settings || kind == ManagementPage::diagnostics;
+  const bool clients = kind == ManagementPage::clients &&
+                       context.controller.teleprompter().state().device_id.empty();
   PageView view;
   const auto& teleprompter = context.controller.teleprompter().state();
   if (!teleprompter.editor && !teleprompter.sharing)
@@ -100,7 +102,7 @@ void WinUiManagementPagesHost::show(ManagementPage kind, WinUiPageContext contex
     view = *teleprompter_form_;
     refresh_teleprompter_page(view.body, context);
   }
-  else if (editable)
+  else if (editable || clients)
   {
     auto found = forms_.find(kind);
     if (found == forms_.end())
@@ -108,6 +110,9 @@ void WinUiManagementPagesHost::show(ManagementPage kind, WinUiPageContext contex
     view = found->second;
     switch (kind)
     {
+    case ManagementPage::clients:
+      refresh_clients_page(view.body, context);
+      break;
     case ManagementPage::adapters:
       refresh_adapters_page(view.body, context);
       break;

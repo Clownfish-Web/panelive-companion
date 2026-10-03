@@ -248,7 +248,6 @@ WinUiManagementWindow::WinUiManagementWindow(std::string gateway_name,
   title_bar.ButtonHoverBackgroundColor(winrt::Windows::UI::Color{255, 52, 58, 68});
   title_bar.ButtonPressedBackgroundColor(winrt::Windows::UI::Color{255, 70, 77, 89});
   title_bar.ButtonInactiveBackgroundColor(winrt::Windows::UI::Color{255, 24, 27, 32});
-  app_window.Resize({1120, 760});
   app_window.Closing(
       [this](const auto&, const winrt::Microsoft::UI::Windowing::AppWindowClosingEventArgs& event)
       {
@@ -262,15 +261,33 @@ WinUiManagementWindow::WinUiManagementWindow(std::string gateway_name,
     enable_dark_title_bar(hwnd);
     SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(companion_icon()));
     SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(companion_icon()));
-    const auto screen_width = GetSystemMetrics(SM_CXSCREEN);
-    const auto screen_height = GetSystemMetrics(SM_CYSCREEN);
-    SetWindowPos(hwnd,
-                 nullptr,
-                 std::max(0, (screen_width - 1120) / 2),
-                 std::max(0, (screen_height - 760) / 2),
-                 1120,
-                 760,
-                 SWP_NOACTIVATE | SWP_NOZORDER);
+    // Size the client area in logical pixels: navigation and padding must still leave
+    // room for the Clients page's 820-pixel side-by-side layout at any display scale.
+    const auto window_dpi = GetDpiForWindow(hwnd);
+    const auto dpi = window_dpi ? window_dpi : USER_DEFAULT_SCREEN_DPI;
+    RECT bounds{0, 0, MulDiv(1280, dpi, USER_DEFAULT_SCREEN_DPI),
+                MulDiv(800, dpi, USER_DEFAULT_SCREEN_DPI)};
+    AdjustWindowRectExForDpi(&bounds,
+                             static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_STYLE)),
+                             FALSE,
+                             static_cast<DWORD>(GetWindowLongPtrW(hwnd, GWL_EXSTYLE)),
+                             dpi);
+    auto width = bounds.right - bounds.left;
+    auto height = bounds.bottom - bounds.top;
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    if (GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor))
+    {
+      const auto& work = monitor.rcWork;
+      width = std::min(width, work.right - work.left);
+      height = std::min(height, work.bottom - work.top);
+      SetWindowPos(hwnd, nullptr,
+                   work.left + (work.right - work.left - width) / 2,
+                   work.top + (work.bottom - work.top - height) / 2,
+                   width, height, SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+    else
+      SetWindowPos(hwnd, nullptr, 0, 0, width, height,
+                   SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
   }
   current_page_ = controller_.state().initial_page;
   rebuild_navigation();

@@ -5,6 +5,8 @@
 namespace studio_remote::windows
 {
 winrt::Microsoft::UI::Xaml::FrameworkElement make_clients_page(WinUiPageContext context);
+void refresh_clients_page(const winrt::Microsoft::UI::Xaml::FrameworkElement& page,
+                          WinUiPageContext context);
 winrt::Microsoft::UI::Xaml::FrameworkElement make_teleprompter_page(WinUiPageContext context);
 winrt::Microsoft::UI::Xaml::FrameworkElement make_teleprompter_sharing(WinUiPageContext context);
 winrt::Microsoft::UI::Xaml::FrameworkElement
