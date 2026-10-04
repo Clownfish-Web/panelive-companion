@@ -1,24 +1,20 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
 
 struct ssl_ctx_st;
 
-namespace studio_remote
-{
-class ICredentialStore;
-}
-
 namespace studio_remote::macos
 {
-/// Keychain-backed server identity. Creation/loading belongs to the single configuration worker.
-/// No unencrypted private-key file is created. The identity never rotates implicitly on error.
+/// User-only TLS files, matching Windows/Linux. Creation/loading belongs to the configuration
+/// worker. The identity never rotates implicitly on error; legacy Keychain items are not read.
 class TlsIdentity
 {
 public:
-  static TlsIdentity load_or_create(ICredentialStore& credentials,
+  static TlsIdentity load_or_create(const std::filesystem::path& directory,
                                     std::string_view instance_id,
                                     std::string_view local_hostname);
   ~TlsIdentity();

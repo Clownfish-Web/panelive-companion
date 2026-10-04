@@ -62,11 +62,10 @@ struct ManagementNetworkPage: View {
                          + "and invalidates any open pairing code.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Companion stores the private key for secure mobile connections in macOS "
-                         + "Keychain. macOS may ask you to allow access to this key when Companion starts.")
+                    Text("Secure mobile connections use a private key stored locally for your macOS user account.")
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("network-keychain-explanation")
+                        .accessibilityIdentifier("network-storage-explanation")
                     HStack {
                         Spacer()
                         Button("Apply network settings", action: apply)

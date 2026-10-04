@@ -460,6 +460,7 @@ elseif(APPLE)
     platform/macos/platform_services/macos_config_file.cpp
     platform/macos/platform_services/macos_production_installations.mm
     platform/macos/credentials/macos_tls_identity.cpp
+    platform/macos/credentials/macos_private_tls_storage.cpp
     platform/macos/credentials/macos_credential_store.mm
     platform/macos/credentials/macos_keychain_interaction.cpp
     platform/macos/credentials/macos_startup_password.cpp

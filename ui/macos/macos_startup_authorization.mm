@@ -10,15 +10,11 @@ bool request_keychain_startup_authorization()
   [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
   NSAlert* alert = [NSAlert new];
   alert.alertStyle = NSAlertStyleInformational;
-  alert.messageText = @"Companion needs access to its saved Keychain items";
+  alert.messageText = @"Unlock Companion's credential storage";
   alert.informativeText =
-      @"Companion uses your saved OBS password and Streamlabs API token to connect to those "
-       "adapters. It also stores the private key for secure mobile connections in Keychain.\n\n"
-       "Choose Continue to let macOS request access to the required items. If a Keychain dialog "
-       "asks for a password, use your Mac login/Keychain password.\n\n"
-       "For Companion's saved items, choose Always Allow to remember access. Allow grants "
-       "access only for that request. Items from older development builds may need this "
-       "one-time approval.";
+      @"Companion keeps backend passwords and tokens encrypted in your macOS login Keychain. "
+       "The Keychain is locked or access is unavailable.\n\n"
+       "Choose Continue to let macOS unlock it. If asked, enter your Mac login/Keychain password.";
   [alert addButtonWithTitle:@"Continue"];
   [alert addButtonWithTitle:@"Quit"].keyEquivalent = @"\x1b";
   [NSApp activateIgnoringOtherApps:YES];

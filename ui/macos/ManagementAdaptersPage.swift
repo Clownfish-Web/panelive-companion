@@ -103,9 +103,8 @@ private struct ManagementWebSocketConnectionCard: View {
                         .accessibilityIdentifier("\(identifier)-password")
                 }
             }
-            Text("Your \(name) \(secretLabel.lowercased()) is stored securely in macOS Keychain. "
-                 + "Companion uses it to connect to \(name). macOS may ask you to allow access "
-                 + "to this saved credential when Companion connects.")
+            Text("Your \(name) \(secretLabel.lowercased()) is encrypted in your macOS login Keychain. "
+                 + "Companion uses it to connect to \(name). Unlock your login Keychain if access is unavailable.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("\(identifier)-keychain-explanation")

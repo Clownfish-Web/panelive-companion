@@ -1,4 +1,5 @@
 #include "macos_tls_identity.hpp"
+#include "macos_private_tls_storage.hpp"
 
 #include <array>
 #include <openssl/buffer.h>
@@ -8,7 +9,6 @@
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 #include <stdexcept>
-#include <studio_remote/credentials/credential_store.hpp>
 #include <utility>
 
 namespace studio_remote::macos
@@ -177,13 +177,15 @@ public:
   }
 };
 
-TlsIdentity TlsIdentity::load_or_create(ICredentialStore& credentials,
+TlsIdentity TlsIdentity::load_or_create(const std::filesystem::path& directory,
                                         std::string_view instance_id,
                                         std::string_view local_hostname)
 {
   const auto common_name = subject_name(instance_id);
   auto impl = std::make_unique<Impl>();
-  SecretPem stored{credentials.get("tls-identity")};
+  const PrivateTlsStorage storage(directory);
+  const auto path = directory / "gateway.pem";
+  SecretPem stored{storage.read(path)};
   if (stored.value.empty())
   {
     const auto names = alternative_names(local_hostname);
@@ -199,7 +201,7 @@ TlsIdentity TlsIdentity::load_or_create(ICredentialStore& credentials,
     char* bytes = nullptr;
     const auto count = BIO_get_mem_data(encoded.get(), &bytes);
     require(count > 0, "Could not encode TLS identity");
-    credentials.put("tls-identity", std::string_view(bytes, static_cast<std::size_t>(count)));
+    storage.write_new(path, std::string_view(bytes, static_cast<std::size_t>(count)));
   }
   else
   {

@@ -10,22 +10,25 @@ macOS downloads:
 Requires macOS 13 or later. The integrated installer requires matching native
 OBS Studio 32.2.x with Qt 6.11.1. It installs Companion, its matching OBS helper
 and the native integration component. PaneLive Teleprompter is included.
-Quit OBS and Companion before installing. Existing settings, paired clients and
-Keychain credentials are preserved by the installer. For standalone use without
-OBS, use the application from the ZIP.
+Quit OBS and Companion before installing. This October 4 development rebuild moves
+the macOS TLS identity to user-only files and uses a new encrypted backend credential
+namespace. It does not import old Keychain items: re-enter backend passwords/tokens
+and pair clients again. For standalone use without OBS, use the application from the ZIP.
 
 **Signing:** the app, helper and integration component are signed with Developer ID
 Application; the PKG installers are signed with Developer ID Installer. Both use
-Apple-issued certificates and secure timestamps. The ZIP contents retain their
-notarization and stapled tickets. The October 3 installer repair rebuilt both
-signed PKGs; these replacement PKGs require fresh notarization and stapling before
-distribution. Do not reuse the earlier packages' notarization result.
+Apple-issued certificates and secure timestamps. The October 4 storage rebuild replaces
+both architectures' PKGs and ZIPs. These rebuilt artifacts require fresh notarization
+and stapling before distribution; the earlier artifacts' notarization results do not
+apply. SHA256SUMS-macos contains the replacement artifacts' checksums.
 
 The release workflow checks Release compilation, public packaging and Mach-O
 tests, signatures, deployment metadata, dependency resolution, extracted installer
 payload hashes, installation scope and required choices. The Apple silicon build
 runs natively; Intel executable smoke checks run under Rosetta on Apple silicon.
-Private application/UI/IPC suites are not included in the public source workflow.
+The October 4 rebuild passed all 23 public release-tool tests for each architecture,
+plus package signature, payload and installer-choice verification. Private
+application/UI/IPC suites are not included in the public source workflow.
 The October 3 Apple silicon repair passed an actual native Installer upgrade on
 the development Mac, including both installer callbacks, shared OBS helper placement,
 and Companion launch. Paired iPad clients reconnected and shared teleprompter video

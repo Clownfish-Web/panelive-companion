@@ -27,7 +27,9 @@ private:
   int native_status_;
 };
 
-/// Per-instance, local Keychain storage. Call from an application worker: Security calls block.
+/// Per-instance, encrypted user-scoped Keychain storage, analogous to Windows user DPAPI.
+/// Reads do not require per-executable approval; macOS signing-partition checks still apply.
+/// No legacy namespace is imported. Call from an application worker: Security calls block.
 /// The application must own MacosKeychainInteraction before workers start to suppress legacy
 /// file-Keychain UI as well as per-query authentication. No iCloud sync or plaintext fallback.
 /// Only explicit startup authorization uses a short-lived interactive instance, before listeners.

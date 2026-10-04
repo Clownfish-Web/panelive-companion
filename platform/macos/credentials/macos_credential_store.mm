@@ -37,7 +37,7 @@ credential_query(std::string_view instance, std::string_view key, KeychainIntera
 {
   // Service and account are separate attributes, so arbitrary key punctuation cannot collide.
   NSString* service =
-      [@"panelive-companion/" stringByAppendingString:identifier_text(instance)];
+      [@"panelive-companion/user-credentials/" stringByAppendingString:identifier_text(instance)];
   LAContext* authentication = [[LAContext alloc] init];
   authentication.interactionNotAllowed = interaction != KeychainInteraction::allow;
   return [@{
@@ -61,12 +61,41 @@ void check_keychain_status(OSStatus status)
   throw KeychainError(category, status);
 }
 
+// Keep encryption at rest without per-executable confirmation, analogous to
+// user DPAPI and desktop keyrings. macOS still enforces its signing-partition
+// boundary. Only new Companion items receive this policy. The file-Keychain ACL
+// APIs have no modern equivalent for this user-scoped policy.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+id user_scoped_access()
+{
+  SecAccessRef raw_access = nullptr;
+  check_keychain_status(SecAccessCreate(
+      CFSTR("PaneLive Companion backend credential"), nullptr, &raw_access));
+  id access = CFBridgingRelease(raw_access);
+  NSArray* entries = CFBridgingRelease(SecAccessCopyMatchingACLList(
+      (__bridge SecAccessRef)access, kSecACLAuthorizationDecrypt));
+  if (entries.count == 0)
+    throw KeychainError(KeychainFailure::unexpected, errSecDecode);
+  for (id entry in entries)
+  {
+    // NULL here trusts applications within the user's unlocked keychain; an
+    // empty array would instead trust none. The owner/change-ACL entry is left
+    // untouched.
+    check_keychain_status(
+        SecACLSetContents((__bridge SecACLRef)entry, nullptr,
+                          CFSTR("PaneLive Companion backend credential"), 0));
+  }
+  return access;
+}
+#pragma clang diagnostic pop
+
 std::string_view error_message(KeychainFailure failure)
 {
   switch (failure)
   {
   case KeychainFailure::access_denied:
-    return "Keychain access denied. Unlock the login keychain and allow Companion access.";
+    return "Credential storage is locked or access was denied. Unlock your login keychain and retry.";
   case KeychainFailure::unavailable:
     return "Keychain is unavailable. Sign in to the macOS user session and retry.";
   case KeychainFailure::unexpected:
@@ -169,11 +198,13 @@ void MacosCredentialStore::put(std::string_view key, std::string_view value)
     if (status == errSecItemNotFound)
     {
       query[(__bridge id)kSecValueData] = data;
+      query[(__bridge id)kSecAttrAccess] = user_scoped_access();
       status = SecItemAdd((__bridge CFDictionaryRef)query, nullptr);
       if (status == errSecDuplicateItem)
       {
         // Another writer created the same item after our update. Preserve normal put semantics.
         [query removeObjectForKey:(__bridge id)kSecValueData];
+        [query removeObjectForKey:(__bridge id)kSecAttrAccess];
         status =
             SecItemUpdate((__bridge CFDictionaryRef)query, (__bridge CFDictionaryRef)attributes);
       }

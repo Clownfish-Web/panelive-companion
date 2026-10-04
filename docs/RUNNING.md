@@ -105,6 +105,28 @@ for details. Keychain and local-network prompts should be handled in your logged
 session. A locally built, ad-hoc-signed app is an evaluation artifact; published release
 notes must state their signing/notarization status.
 
+### macOS secret storage
+
+The TLS certificate and private key are stored in
+`~/Library/Application Support/panelive-companion/tls/gateway.pem` (or `tls/`
+under `--data-directory`). The directory is restricted to `0700` and the file to
+`0600`, with extended ACL grants removed. As on Windows/Linux, this private key
+is protected by filesystem permissions rather than separate file encryption.
+Loading it does not access Keychain.
+
+OBS WebSocket passwords and Streamlabs tokens remain encrypted in the user's
+Keychain, under `panelive-companion/user-credentials/<instance-id>`. New items
+allow reads without per-executable confirmation; macOS signing-partition checks
+still apply. Builds signed by the same release publisher can reuse credentials
+without app-approval dialogs. A locked Keychain still needs unlocking. There is
+no plaintext password fallback and no change to unrelated Keychain items.
+
+This development storage change does not import the previous Keychain namespace.
+Re-enter backend passwords/tokens and pair clients again when first using it.
+Old Keychain entries are left untouched. Once created, the file identity is reused
+on subsequent starts; malformed or inaccessible files cause an error, never silent
+identity replacement.
+
 ## Linux
 
 Use the same amd64 `.deb` installer on **Ubuntu 22.04, 24.04 or 26.04**, or

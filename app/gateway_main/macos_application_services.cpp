@@ -97,14 +97,13 @@ MacosApplicationServices::MacosApplicationServices(const CommandLine& command_li
       });
   if (config_.enforce_single_operator_client_mode)
     audit_->enforce_single_operator();
-  auto [tls, obs_password] = [&]
+  auto tls = TlsIdentity::load_or_create(store_.directory() / "tls", config_.instance_id, "localhost");
+  auto obs_password = [&]
   {
     const auto interaction =
         command_line.open_management ? KeychainInteraction::allow : KeychainInteraction::disallow;
     MacosKeychainInteraction authorization(interaction);
     MacosCredentialStore startup_credentials(config_.instance_id, interaction);
-    auto identity =
-        TlsIdentity::load_or_create(startup_credentials, config_.instance_id, "localhost");
     if (command_line.read_streamlabs_token)
       import_startup_obs_password(
           [&](std::string_view token)
@@ -115,15 +114,15 @@ MacosApplicationServices::MacosApplicationServices(const CommandLine& command_li
           },
           STDIN_FILENO,
           cancellation);
-    // Obtain startup consent for an imported or previously stored provider token before the
-    // noninteractive runtime credential view is used by the composition.
+    // Unlock encrypted backend storage during explicit startup recovery if necessary.
+    // Runtime credential access remains noninteractive.
     const auto providers = selected_providers(config_.providers);
     if (providers.contains("streamlabs"))
       static_cast<void>(startup_credentials.get(config_.streamlabs_credential_reference));
     auto password = providers.contains("obs")
                         ? startup_credentials.get(config_.obs_credential_reference)
                         : std::string{};
-    return std::pair{std::move(identity), std::move(password)};
+    return password;
   }();
   // Startup authorization has ended. Runtime credential access remains noninteractive.
   GatewayCompositionInputs inputs;
