@@ -210,6 +210,11 @@ same user identity for helper access.
   (normally `8088`) and credentials on the Adapters page. The standard build selects
   SRT for Program/Preview and OMT for monitoring audio. Configure the corresponding
   vMix outputs and audio routing; HTTP connectivity alone does not enable media.
+  For correct operation, run vMix and Companion on the same computer. The host can
+  be `localhost`, a loopback address, or an IP address assigned to an active network
+  adapter on that PC, including its LAN address. The Adapters page marks an
+  unrecognized local host in red and displays a warning above the field. Local
+  snapshot thumbnails and source category colors require this same-host detection.
 - **Streamlabs Desktop (Windows/macOS):** configure the local Streamlabs adapter and,
   where requested, its remote-control endpoint/token. The transport and available
   features differ from OBS. No OBS helper is installed into Streamlabs. This adapter

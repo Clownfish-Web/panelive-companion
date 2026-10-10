@@ -1,4 +1,5 @@
 #include "windows_vmix_thumbnail_capture.hpp"
+#include "../platform_services/windows_lan_address.hpp"
 
 #include <studio_remote/common/types.hpp>
 
@@ -226,7 +227,7 @@ RawThumbnail WindowsVmixThumbnailCapture::decode(const std::filesystem::path& pa
 
 bool is_local_vmix_host(std::string_view host)
 {
-  return host == "127.0.0.1" || host == "localhost" || host == "::1" || host == "[::1]";
+  return is_local_host_address(host);
 }
 
 } // namespace studio_remote::windows

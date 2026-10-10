@@ -1,4 +1,5 @@
 #include "winui_management_pages.hpp"
+#include "../../platform/windows/platform_services/windows_lan_address.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -59,6 +60,7 @@ constexpr wchar_t adapters_markup[] = LR"xaml(
         <StackPanel Spacing="14">
           <Grid><TextBlock Text="vMix" FontSize="18" FontWeight="SemiBold"/><StackPanel x:Name="VmixStatusHost" HorizontalAlignment="Right"/></Grid>
           <Border Height="1" Background="#343E4C"/>
+          <Grid x:Name="VmixLocalityWarningHost"/>
           <Grid ColumnSpacing="12" RowSpacing="10">
             <Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
@@ -138,6 +140,25 @@ controls::NumberBox number_field(double minimum, double maximum)
   field.SpinButtonPlacementMode(controls::NumberBoxSpinButtonPlacementMode::Compact);
   return field;
 }
+
+void refresh_vmix_locality(const controls::TextBox& host, const controls::InfoBar& warning)
+{
+  const bool local = is_local_host_address(narrow(host.Text()));
+  warning.IsOpen(!local);
+  const auto foreground = host.Resources()
+                              .Lookup(winrt::box_value(L"TextControlForeground"))
+                              .as<xaml::Media::SolidColorBrush>();
+  foreground.Color(local ? winrt::Windows::UI::Color{255, 255, 255, 255}
+                         : winrt::Windows::UI::Color{255, 255, 107, 107});
+  if (local)
+  {
+    host.ClearValue(controls::Control::BorderBrushProperty());
+  }
+  else
+  {
+    host.BorderBrush(foreground);
+  }
+}
 } // namespace
 
 xaml::FrameworkElement make_adapters_page(WinUiPageContext context)
@@ -163,7 +184,24 @@ xaml::FrameworkElement make_adapters_page(WinUiPageContext context)
             context.redraw();
           });
 
-  auto vmix_host = mount_control(page, L"VmixHostField", controls::TextBox());
+  auto vmix_host = controls::TextBox();
+  // A shared, mutable brush keeps the validation color in every editing state.
+  // Setting Foreground alone is overridden by the focused TextBox visual state.
+  const auto vmix_foreground =
+      xaml::Media::SolidColorBrush(winrt::Windows::UI::Color{255, 255, 255, 255});
+  for (const auto* key : {L"TextControlForeground", L"TextControlForegroundPointerOver",
+                          L"TextControlForegroundFocused"})
+    vmix_host.Resources().Insert(winrt::box_value(key), vmix_foreground);
+  vmix_host.Foreground(vmix_foreground);
+  mount_control(page, L"VmixHostField", vmix_host);
+  auto vmix_warning = mount_control(page, L"VmixLocalityWarningHost", controls::InfoBar());
+  vmix_warning.Severity(controls::InfoBarSeverity::Warning);
+  vmix_warning.IsClosable(false);
+  vmix_warning.Title(L"Use vMix on this computer");
+  vmix_warning.Message(L"Correct operation is ensured only when vMix and PaneLive Companion run "
+                       L"on the same computer. Enter localhost or an IP address assigned to this PC.");
+  vmix_host.TextChanged([vmix_warning](const auto& sender, const auto&)
+                       { refresh_vmix_locality(sender.template as<controls::TextBox>(), vmix_warning); });
   auto vmix_http_port = mount_control(page, L"VmixHttpPortField", number_field(1, 65'535));
   auto vmix_username = mount_control(page, L"VmixUsernameField", controls::TextBox());
   auto vmix_password = mount_control(page, L"VmixPasswordField", controls::PasswordBox());
@@ -246,6 +284,8 @@ xaml::FrameworkElement make_companion_settings_page(WinUiPageContext context)
 
 void refresh_adapters_page(const xaml::FrameworkElement& page, WinUiPageContext context)
 {
+  refresh_vmix_locality(mounted_control<controls::TextBox>(page, L"VmixHostField"),
+                       mounted_control<controls::InfoBar>(page, L"VmixLocalityWarningHost"));
   const auto& state = context.controller.state();
   const auto refresh_visibility = [&](std::wstring_view card_name, std::string_view provider_id)
   {
