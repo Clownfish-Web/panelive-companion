@@ -18,6 +18,10 @@
 #define IntegrationCompileArgs "/DPackageRoot=" + AddQuotes(PackageRoot) + " /DAppVersion=" + AddQuotes(AppVersion)
 #ifdef InstallerSignTool
   #define IntegrationCompileArgs IntegrationCompileArgs + " /DInstallerSignTool=" + AddQuotes(InstallerSignTool)
+  #ifdef InstallerSignToolCommand
+    ; Command-line sign tools are not inherited by the nested compiler process.
+    #define IntegrationCompileArgs IntegrationCompileArgs + " /S" + AddQuotes(InstallerSignTool + "=" + InstallerSignToolCommand)
+  #endif
 #endif
 #if Exec(CompilerPath + "ISCC.exe", IntegrationCompileArgs + " " + AddQuotes(SourcePath + "panelive-companion-integrations.iss"), SourcePath, 1, SW_HIDE) != 0
   #error Could not compile the PaneLive Companion integration component.

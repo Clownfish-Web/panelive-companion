@@ -1,0 +1,7 @@
+#pragma once
+
+namespace studio_remote::teleprompter
+{
+inline constexpr char demo_script_content[] =
+"@STUDIO_REMOTE_TELEPROMPTER_DEMO@";
+} // namespace studio_remote::teleprompter

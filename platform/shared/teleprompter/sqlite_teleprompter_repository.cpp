@@ -1,6 +1,7 @@
 #include "sqlite_teleprompter_repository.hpp"
 #include "../storage/sqlite_support.hpp"
 
+#include <studio_remote/build/teleprompter_demo.hpp>
 #include <studio_remote/teleprompter/memory_session_repository.hpp>
 
 #include <algorithm>
@@ -69,6 +70,22 @@ void write_script(sqlite3* database, const LoadedScript& loaded)
   statement.finish();
 }
 
+void write_demo_script(sqlite3* database, std::uint64_t now)
+{
+  auto compiled = compile_script({"DEMO - Solo Travel", demo_script_content});
+  if (!compiled || now > maximum_safe_integer)
+    throw std::runtime_error("Unable to initialize the demo teleprompter script");
+  const auto& document = *compiled.value;
+  Summary summary{"demo-solo-travel",
+                  document.draft.name,
+                  1,
+                  now,
+                  now,
+                  document.word_count,
+                  document.estimated_duration_ms};
+  write_script(database, *loaded_script(Script{std::move(summary), std::move(*compiled.value), {}}));
+}
+
 void update_script(sqlite3* database, const LoadedScript& loaded, std::uint64_t expected_revision)
 {
   const auto& script = loaded.script;
@@ -106,6 +123,7 @@ SqliteRepository::SqliteRepository(const std::filesystem::path& database_path,
   if (!devices_ || !new_id_ || !unix_ms_)
     throw std::invalid_argument("Teleprompter requires device, ID and clock providers");
   const auto devices_snapshot = devices_();
+  const auto now = unix_ms_();
   const auto path = database_path.u8string();
   sqlite3* opened = nullptr;
   const auto status = sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()),
@@ -126,6 +144,13 @@ SqliteRepository::SqliteRepository(const std::filesystem::path& database_path,
   if (!version.row() || version.number(0) != 3 || version.row())
     throw std::runtime_error(
         "Unsupported teleprompter storage schema; use a fresh development data directory");
+  bool new_library = false;
+  {
+    Statement existing(database_.get(),
+                       "SELECT 1 FROM sqlite_master WHERE type='table' "
+                       "AND name='teleprompter_scripts'");
+    new_library = !existing.row();
+  }
   storage::execute(
       database_.get(),
       "CREATE TABLE IF NOT EXISTS teleprompter_scripts("
@@ -140,6 +165,9 @@ SqliteRepository::SqliteRepository(const std::filesystem::path& database_path,
       "WHEN NEW.revoked<>0 BEGIN DELETE FROM teleprompter_assignments WHERE device_id=NEW.id; END;"
       "DELETE FROM teleprompter_assignments WHERE NOT EXISTS "
       "(SELECT 1 FROM devices WHERE devices.id=teleprompter_assignments.device_id AND revoked=0)");
+  // Seed only when creating the library, in the same transaction. A deleted demo stays deleted.
+  if (new_library)
+    write_demo_script(database_.get(), now);
   transaction.commit();
   hydrate(devices_snapshot);
   sessions_ = std::make_unique<MemorySessionRepository>(

@@ -27,6 +27,11 @@
 /.vs/
 /.vscode/
 /.idea/
+# Azure CLI sessions and local signing configuration must never be committed.
+.azure/
+azure-context.json
+signing-metadata*.json
+*.signing.local.json
 .env
 .env.*
 *.user

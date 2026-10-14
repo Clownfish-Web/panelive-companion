@@ -8,6 +8,11 @@ For OBS monitoring, run Companion in the same desktop user session as OBS; the h
 uses local, owner-restricted IPC. Remote OBS WebSocket control does not make the
 helper's local video/audio IPC remote.
 
+On first launch with a new user profile, the teleprompter script library includes
+**DEMO - Solo Travel**, bundled from [solo-travel.txt](teleprompter/solo-travel.txt).
+You can edit, share, or delete it like any other script. Restarting or reinstalling
+while keeping your profile preserves those changes; existing libraries are left intact.
+
 ## Windows
 
 Run the setup executable normally, without **Run as administrator**. It installs

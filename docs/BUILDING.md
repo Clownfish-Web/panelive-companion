@@ -111,6 +111,37 @@ Get-FileHash -LiteralPath "$package.zip" -Algorithm SHA256
 Windows releases always name the combined installer and standalone ZIP checksum
 manifest `SHA256SUMS-windows`.
 
+### Signing a Windows release with Azure Artifact Signing
+
+After staging a fresh package, sign it with `tools/release/sign-windows-package.ps1`.
+Use the canonical directory name `panelive-companion-0.1.0-beta.1-windows-x64`.
+The script modifies the staged app and OBS helper, signs the integration component,
+installer and uninstaller through Inno Setup, verifies the resulting executable
+signatures, and creates the ZIP and SHA-256 manifests in a new output directory.
+Third-party dependencies retain their original signatures.
+
+Install Azure CLI and the Artifact Signing client, then log in with `az login
+--tenant <tenant-id>`. The user needs the Artifact Signing Certificate Profile
+Signer role. Keep account-specific metadata outside version control, for example
+in `out/signing/metadata.json`, with `Endpoint`, `CodeSigningAccountName` and
+`CertificateProfileName` fields. The endpoint must match the account region.
+For local Azure CLI authentication, exclude other credentials in the metadata as
+described in [Microsoft's signing integration guide](https://learn.microsoft.com/azure/artifact-signing/how-to-signing-integrations).
+
+```powershell
+./tools/release/sign-windows-package.ps1 `
+  -PackageRoot $package `
+  -MetadataPath ./out/signing/metadata.json `
+  -DlibPath '<Artifact Signing client>/bin/x64/Azure.CodeSigning.Dlib.dll' `
+  -SignToolPath '<Windows SDK>/bin/<version>/x64/signtool.exe' `
+  -IsccPath "$env:LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe" `
+  -OutputDirectory ./out/signed-release
+```
+
+Both Inno compiler invocations receive the same signing command. Publish the five
+release files from the output directory after validation; the `installer` subdirectory
+contains the compiler's payload manifest for inspection.
+
 ## macOS arm64 or x86_64
 
 Use macOS 13+, Xcode with the Swift 6 toolchain, the Command Line Tools, CMake 3.28+,

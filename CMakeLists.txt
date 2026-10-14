@@ -155,11 +155,14 @@ target_link_libraries(studio_remote_tally_storage PUBLIC studio_remote_tally_pro
   PRIVATE unofficial::sqlite3::sqlite3)
 studio_remote_set_warnings(studio_remote_tally_storage)
 
+include(TeleprompterDemo)
 add_library(studio_remote_teleprompter_storage STATIC
   platform/shared/teleprompter/sqlite_teleprompter_repository.cpp
   platform/shared/teleprompter/session_device_source.cpp)
 target_link_libraries(studio_remote_teleprompter_storage PUBLIC studio_remote_core
   PRIVATE unofficial::sqlite3::sqlite3)
+target_include_directories(studio_remote_teleprompter_storage PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/build_config")
 studio_remote_set_warnings(studio_remote_teleprompter_storage)
 
 add_library(studio_remote_obs_adapter STATIC
