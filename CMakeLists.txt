@@ -25,6 +25,7 @@ include(CompilerWarnings)
 include(LinuxDistribution)
 include(Dependencies)
 include(RemoteTallyService)
+include(ClientStores)
 if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
   include(VmixCategoryColors)
 endif()
@@ -517,6 +518,7 @@ elseif(APPLE)
     ui/macos/management_teleprompter_commands.mm
     ui/macos/management_presentation.mm)
   target_sources(studio_remote_macos_management_bridge PRIVATE ui/macos/management_branding.mm)
+  target_link_libraries(studio_remote_macos_management_bridge PRIVATE panelive_client_stores)
   set(STUDIO_REMOTE_MACOS_NAVIGATION_ARTWORK
     "${CMAKE_CURRENT_BINARY_DIR}/generated/macos/navigation_artwork.hpp")
   add_custom_command(OUTPUT "${STUDIO_REMOTE_MACOS_NAVIGATION_ARTWORK}"
@@ -674,6 +676,7 @@ if(WIN32)
     ui/windows/windows_tray_icon.cpp
     ui/windows/windows_management_ui.cpp
     ui/windows/winui_about_page.cpp
+    ui/windows/winui_client_store_banners.cpp
     ui/windows/winui_advanced_settings_page.cpp
     ui/windows/winui_clients_page.cpp
     ui/windows/winui_teleprompter_page.cpp
@@ -693,7 +696,7 @@ if(WIN32)
   target_compile_definitions(studio_remote_ui_windows PRIVATE
     NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE _WIN32_WINNT=0x0A00)
   target_link_libraries(studio_remote_ui_windows PUBLIC studio_remote_platform_windows PRIVATE
-    studio_remote_application studio_remote_pairing_qr WindowsAppSDK::WinUI ${QRENCODE_LIBRARY} comctl32 comdlg32 dwmapi
+    studio_remote_application studio_remote_pairing_qr panelive_client_stores WindowsAppSDK::WinUI ${QRENCODE_LIBRARY} comctl32 comdlg32 dwmapi
     gdi32 shell32 uxtheme windowscodecs)
   studio_remote_set_warnings(studio_remote_ui_windows)
   set(STUDIO_REMOTE_UI_TARGET studio_remote_ui_windows)
@@ -759,6 +762,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     ADW_VERSION_MIN_REQUIRED=ADW_VERSION_1_1
     ADW_VERSION_MAX_ALLOWED=ADW_VERSION_1_1)
   target_link_libraries(studio_remote_ui_linux PUBLIC
+    panelive_client_stores
     studio_remote_pairing_qr
     studio_remote_platform_linux
     studio_remote_application

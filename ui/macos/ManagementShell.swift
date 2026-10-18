@@ -98,8 +98,22 @@ struct ManagementShell: View {
             .accessibilityLabel(navigationCollapsed ? "Expand navigation" : "Collapse navigation")
             .accessibilityValue(navigationCollapsed ? "Collapsed" : "Expanded")
             .accessibilityIdentifier("navigation-toggle")
-            navigation(footer: false)
-            Spacer()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    navigation(footer: false)
+                    if !navigationCollapsed {
+                        VStack(alignment: .leading, spacing: 8) {
+                            promoBanner("PaneLive Stack", url: URL(string: "https://panelive.app"),
+                                        caption: "Learn more about")
+                            Text("Get PaneLive Client").font(.system(size: 12)).padding(.top, 10)
+                            promoBanner("App Store", url: PLManagementClientAppStoreURL())
+                            promoBanner("Google Play", url: PLManagementClientPlayStoreURL())
+                        }
+                        .padding(.top, 18)
+                        .padding(.bottom, 12)
+                    }
+                }
+            }
             navigation(footer: true)
         }
         .padding(.horizontal, 12)
@@ -107,6 +121,43 @@ struct ManagementShell: View {
         .frame(width: navigationCollapsed ? 76 : 232)
         .frame(maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    @ViewBuilder
+    private func promoBanner(_ title: String, url: URL?, caption: String = "View on") -> some View {
+        Group {
+            if let url {
+                Link(destination: url) { promoBannerLabel(title, caption: caption) }
+            } else {
+                Button {} label: { promoBannerLabel(title, caption: "Coming soon on") }
+                    .disabled(true)
+            }
+        }
+        .buttonStyle(.plain)
+        .help("\(caption) \(title)")
+        .accessibilityLabel("\(caption) \(title)")
+    }
+
+    private func promoBannerLabel(_ title: String, caption: String) -> some View {
+        HStack(spacing: 10) {
+            Image(nsImage: brandImage)
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(caption)
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(title).font(.system(size: 15, weight: .semibold))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.white.opacity(0.18)))
+        .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func navigation(footer: Bool) -> some View {

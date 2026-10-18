@@ -27,6 +27,25 @@ cd panelive-companion
 Never copy another machine's CMake cache or installed dependency tree into the clone.
 The committed generated protocol files are build inputs; no private generator is needed.
 
+## PaneLive Client store banners
+
+The sidebar banners on Windows, macOS and Linux reuse the Companion app icon.
+The "Learn more about / PaneLive Stack" banner links to `https://panelive.app`
+above the "Get PaneLive Client" heading and the two "View on" store banners.
+Their direct links are CMake cache variables defined in `cmake/ClientStores.cmake`:
+
+| Variable | Default |
+| --- | --- |
+| `PANELIVE_CLIENT_APP_STORE_URL` | `https://apps.apple.com/app/id6823878747` |
+| `PANELIVE_CLIENT_PLAY_STORE_URL` | `https://play.google.com/store/apps/details?id=pl.clownfishweb.panelive` |
+
+Override these with `-DPANELIVE_CLIENT_APP_STORE_URL=...` and
+`-DPANELIVE_CLIENT_PLAY_STORE_URL=...` during CMake configuration, or in a preset's
+`cacheVariables`, then rebuild. Both mobile apps use the package/bundle identifier
+`pl.clownfishweb.panelive`; Apple's direct link uses its separate numeric App ID.
+An empty URL keeps that banner visible and disabled with a "Coming soon on" label.
+The banners are hidden when the macOS or Linux sidebar is collapsed.
+
 ## Windows x64
 
 Use Visual Studio 2022 with Desktop development with C++, a Windows SDK, CMake and

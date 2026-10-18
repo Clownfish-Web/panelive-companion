@@ -1,6 +1,7 @@
 #include "winui_management_window.hpp"
 
 #include "winui_management_pages.hpp"
+#include "winui_client_store_banners.hpp"
 #include <studio_remote/ui/management_approval_dispatcher.hpp>
 
 #include "../../platform/windows/resources/windows_resource_ids.h"
@@ -155,8 +156,15 @@ WinUiManagementWindow::WinUiManagementWindow(std::string gateway_name,
   navigation_layout.Children().Append(navigation_title);
   primary_navigation_ = controls::StackPanel();
   primary_navigation_.Spacing(2);
-  controls::Grid::SetRow(primary_navigation_, 1);
-  navigation_layout.Children().Append(primary_navigation_);
+  const auto primary_stack = controls::StackPanel();
+  primary_stack.Children().Append(primary_navigation_);
+  primary_stack.Children().Append(make_client_store_banners());
+  const auto navigation_scroll = controls::ScrollViewer();
+  navigation_scroll.VerticalScrollBarVisibility(controls::ScrollBarVisibility::Auto);
+  navigation_scroll.HorizontalScrollBarVisibility(controls::ScrollBarVisibility::Disabled);
+  navigation_scroll.Content(primary_stack);
+  controls::Grid::SetRow(navigation_scroll, 1);
+  navigation_layout.Children().Append(navigation_scroll);
   footer_navigation_ = controls::StackPanel();
   controls::Grid::SetRow(footer_navigation_, 2);
   navigation_layout.Children().Append(footer_navigation_);

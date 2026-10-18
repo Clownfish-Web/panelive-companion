@@ -2,6 +2,7 @@
 
 #include "linux_management_pages.hpp"
 #include "linux_ui_helpers.hpp"
+#include "client_stores.hpp"
 
 #include <array>
 
@@ -392,7 +393,6 @@ void LinuxManagementWindow::create_navigation()
   gtk_box_append(GTK_BOX(navigation_), navigation_toggle_);
   auto* primary = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
   auto* footer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-  gtk_widget_set_vexpand(primary, TRUE);
   for (const auto& item : navigation_items)
   {
     auto* button = ui::button("", [this, page = item.page] { select_page(page); });
@@ -420,6 +420,48 @@ void LinuxManagementWindow::create_navigation()
     gtk_box_append(GTK_BOX(item.footer ? footer : primary), button);
   }
   gtk_box_append(GTK_BOX(navigation_), primary);
+  auto* stores = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+  gtk_widget_set_margin_top(stores, 18);
+  gtk_widget_set_margin_bottom(stores, 12);
+  const auto append_banner = [stores](const char* title, const char* url,
+                                     const char* caption = "View on")
+  {
+    auto* banner = gtk_link_button_new(url);
+    gtk_widget_add_css_class(banner, "client-store-banner");
+    gtk_widget_set_sensitive(banner, *url != '\0');
+    const auto accessible_label = std::string(caption) + " " + title;
+    gtk_widget_set_tooltip_text(banner, accessible_label.c_str());
+    gtk_accessible_update_property(GTK_ACCESSIBLE(banner), GTK_ACCESSIBLE_PROPERTY_LABEL,
+                                   accessible_label.c_str(), -1);
+    auto* content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    auto* icon = gtk_image_new_from_resource("/com/clownfishweb/PaneLiveCompanion/icon-128.png");
+    gtk_image_set_pixel_size(GTK_IMAGE(icon), 32);
+    gtk_box_append(GTK_BOX(content), icon);
+    auto* text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    auto* action = gtk_label_new(*url ? caption : "Coming soon on");
+    gtk_label_set_xalign(GTK_LABEL(action), 0.0F);
+    gtk_widget_add_css_class(action, "client-store-action");
+    auto* name = gtk_label_new(title);
+    gtk_label_set_xalign(GTK_LABEL(name), 0.0F);
+    gtk_widget_add_css_class(name, "client-store-name");
+    gtk_box_append(GTK_BOX(text), action);
+    gtk_box_append(GTK_BOX(text), name);
+    gtk_box_append(GTK_BOX(content), text);
+    gtk_button_set_child(GTK_BUTTON(banner), content);
+    gtk_box_append(GTK_BOX(stores), banner);
+  };
+  append_banner("PaneLive Stack", "https://panelive.app", "Learn more about");
+  auto* stores_title = gtk_label_new("Get PaneLive Client");
+  gtk_label_set_xalign(GTK_LABEL(stores_title), 0.0F);
+  gtk_widget_set_margin_top(stores_title, 10);
+  gtk_box_append(GTK_BOX(stores), stores_title);
+  append_banner("App Store", client_stores::app_store_url);
+  append_banner("Google Play", client_stores::play_store_url);
+  navigation_labels_.push_back(stores);
+  gtk_box_append(GTK_BOX(navigation_), stores);
+  auto* spacer = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_set_vexpand(spacer, TRUE);
+  gtk_box_append(GTK_BOX(navigation_), spacer);
   auto* separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
   gtk_box_append(GTK_BOX(navigation_), separator);
   gtk_box_append(GTK_BOX(navigation_), footer);

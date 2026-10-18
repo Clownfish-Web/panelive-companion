@@ -131,6 +131,12 @@ rubberband { background: alpha(@accent_bg_color, 0.2); border: 1px solid @accent
   color: @accent_color; box-shadow: inset 2px 0 @accent_bg_color; }
 .navigation-sidebar button:hover { background: @panelive_selection_bg;
   color: @panelive_selection_fg; }
+.navigation-sidebar button.client-store-banner { border: 1px solid @borders;
+  border-radius: 8px; background: alpha(@window_fg_color, 0.05); color: @window_fg_color; }
+.navigation-sidebar button.client-store-banner:hover { background: @panelive_selection_bg; }
+.client-store-banner label { text-decoration-line: none; }
+.client-store-action { font-size: 10px; opacity: 0.75; }
+.client-store-name { font-size: 15px; font-weight: 600; }
 .card { border-radius: 0; background: transparent; color: @window_fg_color; box-shadow: none;
   border: 1px solid @borders; }
 .pairing-preview-backdrop { background: alpha(@window_bg_color, 0.85); }

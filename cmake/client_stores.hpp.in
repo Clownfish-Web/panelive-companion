@@ -1,0 +1,7 @@
+#pragma once
+
+namespace studio_remote::client_stores
+{
+inline constexpr char app_store_url[] = "@PANELIVE_CLIENT_APP_STORE_URL@";
+inline constexpr char play_store_url[] = "@PANELIVE_CLIENT_PLAY_STORE_URL@";
+} // namespace studio_remote::client_stores
