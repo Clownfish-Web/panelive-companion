@@ -1,6 +1,17 @@
 #!/bin/sh
 set -eu
 appdir=$(dirname -- "$(readlink -f -- "$0")")
+# Keep the desktop environment for applications opened from Companion. Our private
+# GTK/GLib runtime must not be inherited by the host browser or its launcher.
+for variable in LD_LIBRARY_PATH GSETTINGS_SCHEMA_DIR GIO_MODULE_DIR GIO_EXTRA_MODULES \
+    GDK_PIXBUF_MODULEDIR XDG_DATA_DIRS FONTCONFIG_FILE GSK_RENDERER GTK_EXE_PREFIX \
+    GTK_DATA_PREFIX GTK_MODULES GTK_PATH GTK_IM_MODULE GDK_PIXBUF_MODULE_FILE; do
+    if value=$(printenv "$variable"); then
+        export "PANELIVE_HOST_$variable=$value"
+    else
+        unset "PANELIVE_HOST_$variable"
+    fi
+done
 export PANELIVE_LINUX_LAUNCHER="$appdir/launch.sh"
 
 export LD_LIBRARY_PATH="$appdir/usr/lib"

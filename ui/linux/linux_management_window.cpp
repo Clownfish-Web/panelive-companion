@@ -426,7 +426,7 @@ void LinuxManagementWindow::create_navigation()
   const auto append_banner = [stores](const char* title, const char* url,
                                      const char* caption = "View on")
   {
-    auto* banner = gtk_link_button_new(url);
+    auto* banner = ui::external_link(url);
     gtk_widget_add_css_class(banner, "client-store-banner");
     gtk_widget_set_sensitive(banner, *url != '\0');
     const auto accessible_label = std::string(caption) + " " + title;

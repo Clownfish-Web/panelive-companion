@@ -745,6 +745,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     ui/linux/linux_management_window_layout.cpp
     ui/linux/linux_management_pages_host.cpp
     ui/linux/linux_form_choices.cpp
+    ui/linux/linux_external_links.cpp
     ui/linux/linux_pairing_qr.cpp
     ui/linux/linux_pairing_preview.cpp
     ui/linux/linux_status_page.cpp

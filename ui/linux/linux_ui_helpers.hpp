@@ -33,6 +33,7 @@ void flow_append(GtkWidget* row, GtkWidget* child);
 GtkWidget* entry(std::string_view value, std::string_view placeholder = {}, bool secret = false);
 GtkWidget* spin(double value, double minimum, double maximum);
 GtkWidget* button(std::string_view label, std::function<void()> action, bool enabled = true);
+GtkWidget* external_link(const char* uri);
 GtkWidget* toggle(bool active, std::function<void(bool)> action);
 GtkWidget* badge(std::string_view text, std::string_view tone = "neutral");
 GtkWidget* named(GtkWidget* widget, std::string_view name);

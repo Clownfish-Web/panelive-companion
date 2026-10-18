@@ -6,11 +6,100 @@
 
 #include <algorithm>
 #include <memory>
+#include <tuple>
 
 namespace studio_remote::linux
 {
 namespace
 {
+constexpr auto snapshot_key = "panelive-clients-snapshot";
+
+struct ClientsSnapshot
+{
+  std::vector<ManagementClientRow> clients;
+  std::string selection;
+  std::string pairing_payload;
+  int window_width;
+  int content_width;
+};
+
+auto client_structure(const ManagementClientRow& client)
+{
+  // Connection, last-seen and identification updates do not change action callbacks.
+  return std::tie(client.id, client.name, client.backend, client.role, client.device_type,
+                  client.can_set_operator, client.can_set_viewer, client.attached_script_count,
+                  client.production_provider, client.remote_tally_allowed);
+}
+
+void remember_clients(GtkWidget* page, LinuxPageContext context)
+{
+  const auto& state = context.controller.state();
+  auto* snapshot = new ClientsSnapshot{state.clients, context.selected_client_id,
+                                       state.pairing ? state.pairing->payload : "",
+                                       gtk_widget_get_width(GTK_WIDGET(context.window)),
+                                       context.content_width};
+  g_object_set_data_full(G_OBJECT(page), snapshot_key, snapshot,
+                         +[](gpointer data) { delete static_cast<ClientsSnapshot*>(data); });
+}
+
+void update_label(GtkWidget* label, const std::string& text)
+{
+  if (text != gtk_label_get_text(GTK_LABEL(label)))
+    gtk_label_set_text(GTK_LABEL(label), text.c_str());
+}
+
+void refresh_connection(GtkWidget* label, bool connected)
+{
+  update_label(label, connected ? "● Online" : "○ Offline");
+  gtk_widget_remove_css_class(label, connected ? "offline" : "online");
+  gtk_widget_add_css_class(label, connected ? "online" : "offline");
+}
+
+bool refresh_live_clients(GtkWidget* page, LinuxPageContext context)
+{
+  const auto* snapshot =
+      static_cast<ClientsSnapshot*>(g_object_get_data(G_OBJECT(page), snapshot_key));
+  const auto& state = context.controller.state();
+  if (!snapshot || snapshot->selection != context.selected_client_id ||
+      snapshot->pairing_payload != (state.pairing ? state.pairing->payload : "") ||
+      snapshot->window_width != gtk_widget_get_width(GTK_WIDGET(context.window)) ||
+      snapshot->content_width != context.content_width ||
+      !std::ranges::equal(snapshot->clients, state.clients,
+                          [](const auto& previous, const auto& current)
+                          { return client_structure(previous) == client_structure(current); }))
+    return false;
+
+  auto* roster = ui::find_widget(page, "clients-roster");
+  for (const auto& client : state.clients)
+  {
+    auto* row = ui::find_widget(roster, "client-row-" + client.id);
+    update_label(ui::find_widget(row, "client-facts"),
+                  client.backend + " · " + client.role + " · " + client.last_seen);
+    refresh_connection(ui::find_widget(row, "client-connection"), client.connected);
+    auto* code = ui::find_widget(row, "client-identification-code");
+    update_label(code, client.identification_code);
+    gtk_widget_set_visible(code, !client.identification_code.empty());
+    set_linux_client_filter_data(row, client);
+  }
+  auto selected = std::ranges::find(state.clients, context.selected_client_id,
+                                    &ManagementClientRow::id);
+  if (selected == state.clients.end())
+    selected = state.clients.begin();
+  if (selected != state.clients.end())
+  {
+    auto* details = ui::find_widget(page, "clients-inspector");
+    refresh_connection(ui::find_widget(details, "client-connection"), selected->connected);
+    update_label(ui::find_widget(details, "client-last-seen"), selected->last_seen);
+    gtk_widget_set_sensitive(ui::find_widget(details, "client-identify"),
+                              selected->connected && !state.identification);
+  }
+  gtk_widget_set_sensitive(ui::find_widget(page, "clients-identify-all"),
+                            !state.identification &&
+                                std::ranges::any_of(state.clients, &ManagementClientRow::connected));
+  refresh_linux_clients_toolbar(ui::find_widget(page, "clients-toolbar"), context, roster);
+  return true;
+}
+
 GtkWidget* client_action_button(GtkWidget* icon,
                                 std::string_view accessible_name,
                                 std::function<void()> action,
@@ -50,6 +139,7 @@ void insert(GtkWidget* flow, GtkWidget* child)
 GtkWidget* connection_status(const ManagementClientRow& client)
 {
   auto* label = gtk_label_new(client.connected ? "● Online" : "○ Offline");
+  gtk_widget_set_name(label, "client-connection");
   gtk_label_set_xalign(GTK_LABEL(label), 0.0F);
   gtk_widget_add_css_class(label, "dispatch-connection");
   gtk_widget_add_css_class(label, client.connected ? "online" : "offline");
@@ -156,7 +246,8 @@ GtkWidget* inspector(LinuxPageContext context, const ManagementClientRow& client
   gtk_widget_set_margin_top(facts, 6);
   gtk_widget_set_margin_bottom(facts, 6);
   detail_fact(facts, 0, "Connection", connection_status(client));
-  detail_fact(facts, 1, "Last seen", ui::description(client.last_seen));
+  detail_fact(facts, 1, "Last seen",
+              ui::named(ui::description(client.last_seen), "client-last-seen"));
   detail_fact(facts,
               2,
               "Attached scripts",
@@ -228,14 +319,15 @@ GtkWidget* client_record(LinuxPageContext context,
   gtk_widget_set_tooltip_text(code, client.id.c_str());
   ui::append(identity, code);
   auto* facts = ui::description(client.backend + " · " + client.role + " · " + client.last_seen);
+  gtk_widget_set_name(facts, "client-facts");
   gtk_widget_add_css_class(facts, "dispatch-client-facts");
   ui::append(identity, facts);
   auto* status = connection_status(client);
   gtk_widget_set_halign(status, GTK_ALIGN_START);
-  if (!client.identification_code.empty())
-    ui::append(
-        identity,
-        ui::named(ui::description(client.identification_code), "client-identification-code"));
+  auto* code_label =
+      ui::named(ui::description(client.identification_code), "client-identification-code");
+  gtk_widget_set_visible(code_label, !client.identification_code.empty());
+  ui::append(identity, code_label);
   ui::append(row, identity);
   gtk_widget_set_hexpand(row, TRUE);
   auto* columns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
@@ -360,6 +452,7 @@ GtkWidget* make_linux_clients_page(LinuxPageContext context)
   auto* result = ui::page("Clients", "Pair devices and manage access to production backends.");
   gtk_widget_set_name(result, "clients-page");
   gtk_widget_add_css_class(result, "dispatch-clients");
+  remember_clients(result, context);
   auto* commands = page_commands(context);
   gtk_widget_set_valign(commands, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(commands, "dispatch-page-actions");
@@ -419,8 +512,10 @@ GtkWidget* make_linux_clients_page(LinuxPageContext context)
 
 void refresh_linux_clients_page(GtkWidget* page, LinuxPageContext context)
 {
-  // Only the editable toolbar is retained. All action gating, pairing expiry and client rows
-  // still come from the current controller snapshot, just as in the Windows page builder.
+  // Keep rows, action buttons and focus attached during routine observations, as on Windows.
+  // Structural changes still rebuild callbacks and layout from the current snapshot.
+  if (refresh_live_clients(page, context))
+    return;
   const std::unique_ptr<GtkWidget, decltype(&g_object_unref)> replacement(
       GTK_WIDGET(g_object_ref_sink(make_linux_clients_page(context))), g_object_unref);
   auto* toolbar = ui::find_widget(page, "clients-toolbar");
@@ -453,5 +548,6 @@ void refresh_linux_clients_page(GtkWidget* page, LinuxPageContext context)
     }
     child = next;
   }
+  remember_clients(page, context);
 }
 } // namespace studio_remote::linux
