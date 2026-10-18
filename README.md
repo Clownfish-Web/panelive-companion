@@ -1,3 +1,5 @@
+![PaneLive Companion](tools/release/panelive-companion-repository-open-graph.jpg)
+
 # PaneLive Companion
 
 **Native Windows, macOS and Linux apps for secure mobile production control and monitoring.**
